@@ -6,20 +6,6 @@ Bring **Arch Linux packages to ANY Linux distribution**. Chisel runs Arch packag
 
 Chisel is a **cross-distribution package manager** that solves a real problem: stable LTS distributions (Ubuntu 22.04, Debian 12) with outdated packages, but you need bleeding-edge development tools.
 
-**Without Chisel:**
-- Ubuntu 22.04 ships Python 3.10 (2021), but you need Python 3.12
-- Option 1: Compile from source (time-consuming, error-prone)
-- Option 2: Add PPAs (security risk, conflicts with system packages)
-- Option 3: Upgrade entire OS (breaks stability)
-
-**With Chisel:**
-```bash
-chisel sync
-chisel install python  # Get Python 3.12 from Arch, isolated
-```
-
-Your system's Python 3.10 stays untouched, Arch's Python 3.12 works perfectly alongside it. No conflicts, no contamination.
-
 ## Key Innovation
 
 Chisel brings Arch packages to ANY distribution by:
@@ -72,7 +58,7 @@ A **cross-distribution package manager** that:
 - Works **independently** of host package manager (apt, dnf, pacman)
 - Written in **Go** for performance, safety, and single-binary deployment
 
-### Core Features (v1.0)
+### Core Features
 - **Sync** Arch databases from mirrors (`chisel sync`)
 - **Install** packages with complete dependency isolation (ALL deps from Arch)
 - **Wrapper generation** for library path management
@@ -83,13 +69,6 @@ A **cross-distribution package manager** that:
 - **Cross-distribution** compatibility (Ubuntu, Fedora, Debian, Arch)
 - **Fast & reliable** - compiled Go binary, minimal dependencies
 
-### Future Features (v1.1+)
-- **ARM64 architecture** support - v1.1
-- **Package scripts** execution (install/remove hooks) - v1.1
-- **Generation management** (system snapshots, rollback) - v2.0
-- **Boot integration** (select versions at boot) - v2.0
-- **Web UI** for package management - v2.0
-
 ### Architecture Highlights
 - **Single binary** - only requires libalpm installed
 - **7 main packages**: `config`, `registry`, `database` (sync), `alpm` (ALPM wrapper), `store` (package storage), `wrapper` (script generation), `symlink` (symlink management)
@@ -98,70 +77,6 @@ A **cross-distribution package manager** that:
 - **Concurrent operations** with goroutines
 - **Complete isolation** - never mixes host and Arch libraries
 - **Storage overhead** - 2-3x size (worth it for universal compatibility)
-
-## Supported Distributions
-
-### Tier 1 (Tested, Fully Supported)
-- ✅ **Ubuntu 22.04 LTS** (glibc 2.35)
-- ✅ **Ubuntu 24.04 LTS** (glibc 2.39)
-- ✅ **Fedora 39** (glibc 2.38)
-- ✅ **Fedora 40** (glibc 2.39)
-- ✅ **Debian 12** (glibc 2.36)
-- ✅ **Arch Linux** (glibc 2.39+) - Works natively
-
-### Tier 2 (Compatible, Community Supported)
-- ✅ **CentOS Stream 9** (glibc 2.34)
-- ✅ **openSUSE Leap** (glibc 2.38)
-- ✅ **Linux Mint** (Ubuntu-based)
-- ✅ **Pop!_OS** (Ubuntu-based)
-
-### Not Supported
-- ❌ **Alpine Linux** (uses musl, not glibc)
-- ❌ **Void Linux** (different package format)
-
-**Requirement**: systemd-based glibc Linux distribution with kernel 3.10+
-
-## Project Status
-
-### Current State
-**Phase**: Phase 0 complete (documentation updated to v4.0)  
-**Version**: v4.0 (Cross-Distribution Architecture)  
-**Status**: Ready to begin Phase 1 (Foundation & ALPM)
-
-### v4.0 Changes (Cross-Distribution)
-**Added in v4.0**:
-- ✅ **Cross-distribution support** (Ubuntu, Fedora, Debian, Arch)
-- ✅ **Complete dependency isolation** (ship ALL dependencies from Arch)
-- ✅ **Wrapper script system** for library path management
-- ✅ **Database sync** from Arch mirrors
-- ✅ **Custom ALPM root** (`/kod/` instead of `/`)
-- ✅ **Multi-distribution testing** strategy (Docker)
-- ✅ **Extended timeline** to 7-9 weeks (from 6-8)
-
-**Kept from v3.0**:
-- ✅ Go implementation with go-alpm/v2
-- ✅ Simplified architecture
-- ✅ Central store + symlink model
-- ✅ JSON registry for package tracking
-- ✅ Deferred features (generation mgmt, package scripts to v1.1/v2.0)
-
-**Rationale for Cross-Distribution**:
-- **10x larger audience** - Ubuntu/Fedora/Debian users outnumber Arch users
-- **Real problem solved** - Stable distro users need bleeding-edge tools
-- **Unique value** - Only tool bringing Arch packages everywhere
-- **Storage trade-off accepted** - 2-3x size for universal compatibility
-
-### Implementation Progress
-- ✅ Go module initialized with go-alpm/v2 dependency
-- ✅ Project structure created (pkg/ for public packages)
-- ✅ Config package COMPLETE (85% test coverage, JSON format)
-- ✅ Registry package COMPLETE (75% test coverage)
-- ✅ Basic CLI structure
-- ⬜ Database sync system (Phase 1.2)
-- ⬜ ALPM wrapper with /kod root (Phase 1.3)
-- ⬜ Wrapper generation (Phase 3)
-- ⬜ Package installation (Phase 4)
-- ⬜ Multi-distro Docker testing (Phase 6)
 
 ## Technology Stack
 
@@ -190,87 +105,6 @@ A **cross-distribution package manager** that:
 - **Coverage**: Target 80%+
 - **Integration**: Docker containers (Ubuntu 22.04, Fedora 40, Debian 12)
 - **Multi-Distribution**: Automated testing across all Tier 1 distributions
-
-## Timeline
-
-| Phase | Duration | Key Deliverables |
-|-------|----------|------------------|
-| **Phase 0**: Documentation | COMPLETE | Spec v4.0, cross-distro architecture docs |
-| **Phase 1**: Foundation & ALPM | 1-1.5 weeks | Database sync, ALPM with /kod root |
-| **Phase 2**: Storage & Extraction | 1 week | Package extraction, library discovery |
-| **Phase 3**: Wrapper & Symlinks | 1 week | Wrapper generation, two-tier symlinks |
-| **Phase 4**: Installation | 1.5-2 weeks | Full install with ALL dependencies |
-| **Phase 5**: Removal & Queries | 1 week | Remove, orphans, queries, cleanup |
-| **Phase 6**: Testing & Polish | 1 week | Docker multi-distro tests, bug fixes |
-| **Phase 7**: Documentation | 3-5 days | User guide, FAQ, troubleshooting |
-| **Total** | **7-9 weeks** | **Production-ready v1.0 (cross-distro)** |
-
-**Comparison to v3.0**: Extended by 1-3 weeks for cross-distribution complexity (database sync, wrapper generation, multi-distro testing).
-
-## Success Criteria
-
-✅ **Functional** (v1.0 Cross-Distribution):
-- Sync databases from Arch mirrors
-- Install packages with complete dependency isolation (ALL deps from Arch)
-- Generate wrapper scripts with correct LD_LIBRARY_PATH
-- Works on Ubuntu 22.04+, Fedora 39+, Debian 12+, Arch Linux
-- Remove packages with orphan cleanup
-- Upgrade packages safely
-- Query installed packages
-- Search repositories
-- Clean up old package versions
-- Atomic operations (all-or-nothing)
-
-✅ **Quality**:
-- 80%+ unit test coverage
-- Docker integration tests pass on Ubuntu, Fedora, Debian
-- Zero critical bugs
-- Clean, documented code
-- Comprehensive user documentation
-- Clear troubleshooting guide for each distribution
-
-✅ **Performance**:
-- Install 100 packages in < 10 minutes (slower due to full dependencies)
-- Sync databases in < 30 seconds
-- Remove packages in < 30 seconds
-- Query response in < 1 second
-- Acceptable storage overhead (2-3x)
-
-✅ **Usability**:
-- Intuitive CLI commands (similar to pacman)
-- Helpful error messages with per-distribution troubleshooting
-- Clear progress indicators
-- Works identically across distributions
-- Storage overhead warning displayed clearly
-
-## Next Steps
-
-### Immediate (Week 1-1.5 - Phase 1)
-1. ✅ Review and update all documentation to v4.0
-2. ⬜ Implement database sync system (download core.db, extra.db from mirrors)
-3. ⬜ Initialize ALPM with /kod root and /kod/db paths
-4. ⬜ Implement `chisel sync` command
-5. ⬜ Implement `chisel search` and `chisel info` commands
-
-### Short-term (Weeks 2-3 - Phases 2-3)
-- Implement package extraction (zstd support)
-- Build library path discovery
-- Create wrapper script generation
-- Implement two-tier symlink management (symlink → wrapper → binary)
-
-### Medium-term (Weeks 4-5 - Phase 4)
-- Complete package installation workflow
-- Implement full dependency resolution (ALL deps including system libs)
-- Handle errors and edge cases
-- Test on Ubuntu, Fedora, Debian with Docker
-
-### Long-term (Weeks 6-9 - Phases 5-7)
-- Implement package removal
-- Add query and search functionality
-- Write comprehensive tests (80%+ coverage)
-- Multi-distribution Docker testing
-- Polish CLI, optimize performance
-- Write user documentation and FAQ
 
 ## Resources
 
@@ -369,12 +203,25 @@ See `docs/` directory for detailed documentation:
 
 ## License
 
-This documentation is part of the chisel project. License TBD.
+MIT License
 
----
+Copyright (c) 2026 Chisel Contributors
 
-**Last Updated**: 2026-03-21  
-**Status**: Phase 0 complete (documentation v4.0), ready for Phase 1 implementation  
-**Version**: v4.0 (Cross-Distribution Architecture)  
-**Timeline**: 7-9 weeks to v1.0  
-**Target Distributions**: Ubuntu 22.04+, Fedora 39+, Debian 12+, Arch Linux
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
