@@ -30,79 +30,7 @@ Chisel brings Arch packages to ANY distribution by:
 
 **Result**: Arch binaries work identically on Ubuntu, Fedora, Debian, etc.
 
-## Documentation Structure
-
-### 📋 [00-SPECIFICATION.md](./00-SPECIFICATION.md)
-**Complete system specification (v4.0 - Cross-Distribution):**
-- Executive summary and cross-distribution vision
-- Cross-distribution architecture (wrapper scripts, library isolation)
-- Core features (install, remove, upgrade, query, sync)
-- System architecture (Go-based, database sync, wrapper generation)
-- Compatibility matrix (Ubuntu 22.04+, Fedora 39+, Debian 12+, Arch)
-- Data models (JSON config, package registry)
-- User workflows and CLI commands
-- Technical requirements
-- Testing strategy (Docker multi-distro)
-- Future roadmap (v1.1, v2.0)
-
-**Start here** to understand the cross-distribution architecture.
-
-### 📊 [01-DIAGRAMS.md](./01-DIAGRAMS.md)
-**Visual diagrams (v4.0):**
-- Cross-distribution architecture overview
-- Wrapper script execution flow
-- Database sync flow
-- Complete installation with wrapper generation
-- Storage layout (`/kod/db/`, `/kod/wrappers/`, `/kod/store/`)
-- Two-tier symlink + wrapper system
-- Component interactions
-
-**Use this** to visualize how cross-distribution support works.
-
-### 🔍 [02-CRITICAL-DECISIONS.md](./02-CRITICAL-DECISIONS.md)
-**Major architectural decisions (v4.0):**
-1. **Cross-Distribution Support Strategy** - Why target Ubuntu/Fedora/Debian (not just Arch)
-2. **Library Dependency Strategy** - Full isolation (2-3x storage for guaranteed compatibility)
-3. **Binary Execution Method** - Wrapper scripts vs direct symlinks
-4. **Database Management** - Separate sync vs using host pacman
-5. **ALPM Usage Strategy** - Use library vs DIY dependency resolution
-6. **Go vs Python** - Why Go is the right choice
-7. **Symlink Strategy** - Two-tier (symlink → wrapper → binary)
-
-For each decision:
-- Options considered with pros/cons
-- Rationale and trade-offs
-- Implementation impact
-- Why chosen approach is best for cross-distribution
-
-**Read this** to understand *why* cross-distribution design choices were made.
-
-### 🚀 [03-IMPLEMENTATION-PLAN.md](./03-IMPLEMENTATION-PLAN.md)
-**7-phase implementation roadmap (v4.0):**
-- Phase 1: Foundation & ALPM (ALPM with `/kod` root, database sync)
-- Phase 2: Storage & Extraction (package extraction, library discovery)
-- Phase 3: Wrapper & Symlinks (wrapper generation, two-tier symlinks)
-- Phase 4: Package Installation (full workflow with ALL dependencies)
-- Phase 5: Removal & Queries (cleanup, orphans, search)
-- Phase 6: Testing & Polish (Docker multi-distro tests, bug fixes)
-- Phase 7: Documentation (user guide, FAQ, troubleshooting)
-
-Timeline: **7-9 weeks total**  
-Target: **80%+ code coverage**, **Docker-tested on Ubuntu/Fedora/Debian**
-
-**Follow this** to implement the cross-distribution system systematically.
-
 ## Quick Start
-
-### For Understanding the Cross-Distribution System
-1. Read **00-SPECIFICATION.md** for the cross-distribution architecture overview
-2. Review **01-DIAGRAMS.md** for visual understanding (especially wrapper execution flow)
-3. Check **02-CRITICAL-DECISIONS.md** for design rationale (why full dependency isolation)
-
-### For Implementation
-1. Review **03-IMPLEMENTATION-PLAN.md** for the 7-phase roadmap
-2. Follow phases in order (Foundation → Storage → Wrappers → Install → Remove → Testing → Docs)
-3. Reference other docs as needed during implementation
 
 ### For Building & Running (on ANY distribution!)
 ```bash
@@ -224,7 +152,6 @@ A **cross-distribution package manager** that:
 - **Storage trade-off accepted** - 2-3x size for universal compatibility
 
 ### Implementation Progress
-- ✅ Documentation v4.0 complete (00-04 files updated for cross-distro)
 - ✅ Go module initialized with go-alpm/v2 dependency
 - ✅ Project structure created (pkg/ for public packages)
 - ✅ Config package COMPLETE (85% test coverage, JSON format)
@@ -345,17 +272,6 @@ A **cross-distribution package manager** that:
 - Polish CLI, optimize performance
 - Write user documentation and FAQ
 
-## File Sizes & Documentation
-
-| File | Size | Version | Primary Content |
-|------|------|---------|-----------------|
-| 00-SPECIFICATION.md | ~60 KB | v4.0 | Cross-distribution architecture, wrapper scripts, database sync |
-| 01-DIAGRAMS.md | ~70 KB | v4.0 | Cross-distro diagrams, wrapper execution flow, two-tier symlinks |
-| 02-CRITICAL-DECISIONS.md | ~50 KB | v4.0 | Cross-distro decisions, library isolation strategy, wrapper rationale |
-| 03-IMPLEMENTATION-PLAN.md | ~45 KB | v4.0 | 7-phase, 7-9 week roadmap with Docker testing |
-| README.md | ~12 KB | v4.0 | This file (cross-distribution overview) |
-| **Total** | **~237 KB** | **v4.0** | **Complete cross-distribution documentation** |
-
 ## Resources
 
 ### Go Dependencies
@@ -389,14 +305,12 @@ A **cross-distribution package manager** that:
 
 ### Building
 ```bash
-# Clone the repository
-cd /home/abuss/Work/devel/chisel-go
+# Install libalpm (one-time)
+# Ubuntu/Debian: sudo apt-get install libalpm-dev
+# Fedora: sudo dnf install libalpm-devel
+# Arch: sudo pacman -S pacman
 
-# Install libalpm
-# Ubuntu/Debian:
-sudo apt-get install libalpm-dev
-
-# Build
+# Build the project
 go build -o chisel ./cmd/chisel
 
 # Run tests
@@ -404,18 +318,13 @@ go test ./...
 
 # Run with coverage
 go test -cover ./...
-
-# Build Docker test images
-docker build -f test/docker/ubuntu-22.04.Dockerfile -t chisel-test-ubuntu .
-docker build -f test/docker/fedora-40.Dockerfile -t chisel-test-fedora .
 ```
 
 ### Project Structure
 ```
-chisel-go/
+chisel/
 ├── cmd/
 │   └── chisel/          # Main CLI entry point
-│       └── main.go
 ├── pkg/                  # Public reusable packages
 │   ├── config/           # Configuration (JSON)
 │   ├── registry/         # Package registry
@@ -424,63 +333,39 @@ chisel-go/
 │   ├── store/            # Package store management
 │   ├── wrapper/          # Wrapper script generation
 │   ├── symlink/          # Symlink operations
-│   ├── download/         # Package downloader
 │   └── install/          # Installation orchestrator
 ├── internal/
 │   └── cli/              # CLI commands
-│       ├── root.go
-│       ├── sync.go       # Sync databases
-│       ├── install.go
-│       ├── remove.go
-│       ├── search.go
-│       └── ...
-├── docs/                 # User documentation
+├── docs/                 # Documentation files
 ├── tests/                # Integration tests
 │   └── docker/           # Multi-distro Docker tests
-│       ├── ubuntu-22.04.Dockerfile
-│       ├── fedora-40.Dockerfile
-│       └── debian-12.Dockerfile
 ├── go.mod
-├── go.sum
 └── README.md
 ```
 
 ### Testing on Multiple Distributions
+Use Docker to test on different distributions:
 ```bash
-# Test on Ubuntu 22.04
+# Example: Test on Ubuntu 22.04
 docker run -it chisel-test-ubuntu bash
 ./run-tests.sh
-
-# Test on Fedora 40
-docker run -it chisel-test-fedora bash
-./run-tests.sh
-
-# Test on Debian 12
-docker run -it chisel-test-debian bash
-./run-tests.sh
 ```
+Build Docker test images for your target distributions in `tests/docker/`.
+
 
 ### Contributing
 
 When working on this project:
 
-1. **Follow the plan**: Use 03-IMPLEMENTATION-PLAN.md as your guide
-2. **Write tests**: Aim for 80%+ coverage
-3. **Test on multiple distros**: Use Docker for Ubuntu, Fedora, Debian testing
-4. **Document as you go**: Add comments and update docs
-5. **Review decisions**: Check 02-CRITICAL-DECISIONS.md before changing architecture
-6. **Keep it simple**: Focus on v1.0 scope, defer features to v1.1/v2.0
-7. **Storage overhead transparency**: Document 2-3x size increase clearly
+1. **Write tests** - Aim for 80%+ coverage
+2. **Test on multiple distros** - Use Docker for Ubuntu, Fedora, Debian testing
+3. **Document as you go** - Add comments and update docs
+4. **Keep it simple** - Focus on v1.0 scope, defer features to v1.1/v2.0
 
-## Questions?
+## Documentation
 
-If you have questions while implementing:
-
-1. **Cross-distribution architecture**: Check 00-SPECIFICATION.md Section 2
-2. **Wrapper scripts**: Check 01-DIAGRAMS.md Section 2.2
-3. **Design choices**: Check 02-CRITICAL-DECISIONS.md (especially Decisions 1-5)
-4. **Implementation order**: Check 03-IMPLEMENTATION-PLAN.md
-5. **Library isolation**: Check 02-CRITICAL-DECISIONS.md Decision 2
+See `docs/` directory for detailed documentation:
+- **CONFIGURATION.md** - Configuration file format and options
 
 ## License
 
