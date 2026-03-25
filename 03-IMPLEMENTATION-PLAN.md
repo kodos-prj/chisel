@@ -1,6 +1,6 @@
-# Implementation Plan for Packmgr (Cross-Distribution)
+# Implementation Plan for Chisel (Cross-Distribution)
 
-This document provides a detailed, step-by-step implementation plan for the packmgr cross-distribution system. It breaks down the work into phases, defines priorities, and establishes clear milestones.
+This document provides a detailed, step-by-step implementation plan for the chisel cross-distribution system. It breaks down the work into phases, defines priorities, and establishes clear milestones.
 
 **Version:** 4.0 (Cross-Distribution Architecture)  
 **Date:** 2026-03-21  
@@ -244,9 +244,9 @@ pkg := handle.SyncDbByName("core").Pkg("vim")
 ### 1.4 CLI Commands (Days 7-10)
 
 **Tasks**:
-- [ ] Implement `packmgr sync` command
-- [ ] Implement `packmgr search` command
-- [ ] Implement `packmgr info` command
+- [ ] Implement `chisel sync` command
+- [ ] Implement `chisel search` command
+- [ ] Implement `chisel info` command
 - [ ] Test CLI parsing
 
 **Files**:
@@ -260,17 +260,17 @@ internal/cli/
 
 **Commands**:
 ```bash
-packmgr sync                    # Sync databases from Arch mirrors
-packmgr search <query>          # Search packages
-packmgr info <package>          # Show package info
-packmgr --help
-packmgr --version
+chisel sync                    # Sync databases from Arch mirrors
+chisel search <query>          # Search packages
+chisel info <package>          # Show package info
+chisel --help
+chisel --version
 ```
 
 **Deliverables**:
-- `packmgr sync` downloads databases
-- `packmgr search` works
-- `packmgr info` shows package details
+- `chisel sync` downloads databases
+- `chisel search` works
+- `chisel info` shows package details
 
 **Estimated Time**: 2-3 days
 
@@ -293,9 +293,9 @@ packmgr --version
 
 **Commands**:
 ```bash
-mkdir -p packmgr-go/{cmd/packmgr,internal/{alpm,package,storage,download,config,cli},pkg/registry}
-cd packmgr-go
-go mod init github.com/yourusername/packmgr-go
+mkdir -p chisel-go/{cmd/chisel,internal/{alpm,package,storage,download,config,cli},pkg/registry}
+cd chisel-go
+go mod init github.com/yourusername/chisel-go
 go get github.com/Jguer/go-alpm/v2
 go get github.com/spf13/cobra
 touch Makefile README.md
@@ -395,7 +395,7 @@ type Config struct {
 
 **Files**:
 ```
-cmd/packmgr/main.go
+cmd/chisel/main.go
 internal/cli/
 ├── root.go
 ├── search.go
@@ -404,10 +404,10 @@ internal/cli/
 
 **Commands to Implement**:
 ```bash
-packmgr search <query>
-packmgr info <package>
-packmgr --help
-packmgr --version
+chisel search <query>
+chisel info <package>
+chisel --help
+chisel --version
 ```
 
 **Deliverables**:
@@ -703,7 +703,7 @@ internal/cli/
 
 **Command**:
 ```bash
-packmgr install <package>...
+chisel install <package>...
   --no-confirm       Skip confirmation
   --dry-run          Show what would be installed
   --as-dep           Mark as dependency
@@ -809,10 +809,10 @@ internal/cli/
 
 **Commands**:
 ```bash
-packmgr list [--explicit|--deps]
-packmgr files <package>
-packmgr search <query>
-packmgr info <package>
+chisel list [--explicit|--deps]
+chisel files <package>
+chisel search <query>
+chisel info <package>
 ```
 
 **Deliverables**:
@@ -841,7 +841,7 @@ internal/cli/
 
 **Command**:
 ```bash
-packmgr cleanup [--keep N] [--dry-run] [--aggressive]
+chisel cleanup [--keep N] [--dry-run] [--aggressive]
 ```
 
 **Deliverables**:

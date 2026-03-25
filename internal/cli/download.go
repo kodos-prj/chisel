@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/yourusername/packmgr-go/pkg/alpm"
-	"github.com/yourusername/packmgr-go/pkg/config"
-	"github.com/yourusername/packmgr-go/pkg/download"
+	"github.com/kodos-prj/chisel/pkg/alpm"
+	"github.com/kodos-prj/chisel/pkg/config"
+	"github.com/kodos-prj/chisel/pkg/download"
 )
 
 // DownloadCommand handles downloading packages.
@@ -22,7 +22,7 @@ func NewDownloadCommand(cfg *config.Config) *DownloadCommand {
 }
 
 // Run executes the download command.
-// Usage: packmgr download [options] <package> [package2] ...
+// Usage: chisel download [options] <package> [package2] ...
 func (d *DownloadCommand) Run(args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("package name required")
@@ -94,15 +94,15 @@ func (d *DownloadCommand) Help() string {
 	return `Download packages from Arch mirrors.
 
 Usage:
-  packmgr download [options] <package> [package2] ...
+  chisel download [options] <package> [package2] ...
 
 Options:
   --no-deps        Don't download dependencies
   --only-cache     Only download, don't extract
   
 Examples:
-  packmgr download bash
-  packmgr download bash vim git
-  packmgr download --no-deps curl
+  chisel download bash
+  chisel download bash vim git
+  chisel download --no-deps curl
 `
 }

@@ -5,8 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/yourusername/packmgr-go/pkg/config"
-	"github.com/yourusername/packmgr-go/pkg/store"
+	"github.com/kodos-prj/chisel/pkg/config"
+	"github.com/kodos-prj/chisel/pkg/store"
 )
 
 // ExtractCommand handles extracting packages.
@@ -22,7 +22,7 @@ func NewExtractCommand(cfg *config.Config) *ExtractCommand {
 }
 
 // Run executes the extract command.
-// Usage: packmgr extract <package.pkg.tar.zst> [<package2.pkg.tar.zst>] ...
+// Usage: chisel extract <package.pkg.tar.zst> [<package2.pkg.tar.zst>] ...
 func (e *ExtractCommand) Run(args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("package file path required")
@@ -131,15 +131,15 @@ func (e *ExtractCommand) Help() string {
 	return `Extract packages to the store.
 
 Usage:
-  packmgr extract <package.pkg.tar.zst> [package2.pkg.tar.zst] ...
+  chisel extract <package.pkg.tar.zst> [package2.pkg.tar.zst] ...
 
 Options:
   --no-symlink     Don't create symlinks after extraction
   --skip-current   Don't set as current version
   
 Examples:
-  packmgr extract bash-5.3.9-1-x86_64.pkg.tar.zst
-  packmgr extract /tmp/bash-5.3.9-1-x86_64.pkg.tar.zst
-  packmgr extract *.pkg.tar.zst
+  chisel extract bash-5.3.9-1-x86_64.pkg.tar.zst
+  chisel extract /tmp/bash-5.3.9-1-x86_64.pkg.tar.zst
+  chisel extract *.pkg.tar.zst
 `
 }

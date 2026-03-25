@@ -9,7 +9,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/yourusername/packmgr-go/pkg/extract"
+	"github.com/kodos-prj/chisel/pkg/extract"
 )
 
 const (

@@ -5,9 +5,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/yourusername/packmgr-go/pkg/config"
-	"github.com/yourusername/packmgr-go/pkg/registry"
-	"github.com/yourusername/packmgr-go/pkg/wrapper"
+	"github.com/kodos-prj/chisel/pkg/config"
+	"github.com/kodos-prj/chisel/pkg/registry"
+	"github.com/kodos-prj/chisel/pkg/wrapper"
 )
 
 // RemoveCommand handles removing packages and cleaning up symlinks.
@@ -38,7 +38,7 @@ type RemoveOptions struct {
 }
 
 // Run executes the remove command.
-// Usage: packmgr remove [options] <package> [package2] ...
+// Usage: chisel remove [options] <package> [package2] ...
 func (r *RemoveCommand) Run(args []string) error {
 	opts := &RemoveOptions{}
 
@@ -57,7 +57,7 @@ func (r *RemoveCommand) Run(args []string) error {
 
 	if len(packageNames) == 0 {
 		fmt.Fprintln(os.Stderr, "Error: package name required")
-		fmt.Fprintln(os.Stderr, "Usage: packmgr remove [options] <package> [package2] ...")
+		fmt.Fprintln(os.Stderr, "Usage: chisel remove [options] <package> [package2] ...")
 		fmt.Fprintln(os.Stderr, "Options:")
 		fmt.Fprintln(os.Stderr, "  --force  Force removal even if symlinks don't exist")
 		return fmt.Errorf("no packages specified")
@@ -186,7 +186,7 @@ func (r *RemoveCommand) removeEmptyDirectories() {
 func (r *RemoveCommand) showHelp() {
 	fmt.Println("Remove packages and clean up symlinks")
 	fmt.Println("")
-	fmt.Println("Usage: packmgr remove [options] <package> [package2] ...")
+	fmt.Println("Usage: chisel remove [options] <package> [package2] ...")
 	fmt.Println("")
 	fmt.Println("Options:")
 	fmt.Println("  --force  Force removal even if symlinks are missing or in unexpected state")
@@ -194,14 +194,14 @@ func (r *RemoveCommand) showHelp() {
 	fmt.Println("")
 	fmt.Println("Examples:")
 	fmt.Println("  # Remove a single package")
-	fmt.Println("  packmgr remove vim")
+	fmt.Println("  chisel remove vim")
 	fmt.Println("")
 	fmt.Println("  # Remove multiple packages")
-	fmt.Println("  packmgr remove btop curl git")
+	fmt.Println("  chisel remove btop curl git")
 	fmt.Println("")
 	fmt.Println("  # Remove with custom symlink directory")
-	fmt.Println("  packmgr --symlink-dir /my/app remove vim")
+	fmt.Println("  chisel --symlink-dir /my/app remove vim")
 	fmt.Println("")
 	fmt.Println("  # Force removal even if symlinks are missing")
-	fmt.Println("  packmgr remove --force btop")
+	fmt.Println("  chisel remove --force btop")
 }

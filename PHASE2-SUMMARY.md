@@ -8,7 +8,7 @@
 
 ## Summary
 
-Phase 2 successfully implements the core storage and extraction functionality of packmgr. Users can now download Arch Linux packages from mirrors and extract them to a centralized version-controlled store.
+Phase 2 successfully implements the core storage and extraction functionality of chisel. Users can now download Arch Linux packages from mirrors and extract them to a centralized version-controlled store.
 
 ## What Was Completed
 
@@ -24,7 +24,7 @@ Phase 2 successfully implements the core storage and extraction functionality of
 
 **Example:**
 ```bash
-packmgr --base-dir /tmp/kod download bash mc
+chisel --base-dir /tmp/kod download bash mc
 ```
 
 ### 2. Archive Extractor ✅
@@ -68,11 +68,11 @@ packmgr --base-dir /tmp/kod download bash mc
 **Usage:**
 ```bash
 # Download packages
-packmgr download bash
-packmgr download vim curl git  # multiple packages
+chisel download bash
+chisel download vim curl git  # multiple packages
 
 # Extract to store
-packmgr extract /path/to/bash-5.3.9-1-x86_64.pkg.tar.zst
+chisel extract /path/to/bash-5.3.9-1-x86_64.pkg.tar.zst
 ```
 
 ### 5. Configuration & Database Components ✅
@@ -125,22 +125,22 @@ packmgr extract /path/to/bash-5.3.9-1-x86_64.pkg.tar.zst
 **CLI Preview:**
 ```bash
 # Default: install + dependencies + extract + symlink + registry
-packmgr install vim
+chisel install vim
 
 # Skip dependencies
-packmgr install vim --no-deps
+chisel install vim --no-deps
 
 # Skip extraction (download only)
-packmgr install vim --no-extract
+chisel install vim --no-extract
 
 # Skip symlink creation
-packmgr install vim --no-symlink
+chisel install vim --no-symlink
 
 # Force overwrite existing files
-packmgr install vim --force
+chisel install vim --force
 
 # Multiple packages
-packmgr install bash vim git
+chisel install bash vim git
 ```
 
 ## Performance Metrics
@@ -161,7 +161,7 @@ packmgr install bash vim git
 - `PHASE2-SUMMARY.md` (this file)
 
 ### Modified Files
-- `cmd/packmgr/main.go` - Added download/extract handlers
+- `cmd/chisel/main.go` - Added download/extract handlers
 - `00-SPECIFICATION.md` - Updated with Phase 2 details and Phase 3 plans
 
 ### Existing Components (Phase 1)
@@ -177,10 +177,10 @@ packmgr install bash vim git
 
 ```bash
 # Navigate to project
-cd /home/abuss/Work/devel/packmgr-go
+cd /home/abuss/Work/devel/chisel-go
 
 # Build
-go build -o packmgr ./cmd/packmgr
+go build -o chisel ./cmd/chisel
 
 # Run all tests
 go test ./...
@@ -189,9 +189,9 @@ go test ./...
 go test -cover ./...
 
 # Test end-to-end
-./packmgr --base-dir /tmp/test sync
-./packmgr --base-dir /tmp/test download bash
-./packmgr --base-dir /tmp/test extract /tmp/test/cache/bash-*.pkg.tar.zst
+./chisel --base-dir /tmp/test sync
+./chisel --base-dir /tmp/test download bash
+./chisel --base-dir /tmp/test extract /tmp/test/cache/bash-*.pkg.tar.zst
 ```
 
 ## Code Quality
@@ -210,22 +210,22 @@ go test -cover ./...
 2. Implement `pkg/symlink/symlink.go` methods
 3. Create `pkg/wrapper/` package for script generation
 4. Implement `internal/cli/install.go` command
-5. Wire install command into `cmd/packmgr/main.go`
+5. Wire install command into `cmd/chisel/main.go`
 6. Add comprehensive tests for Phase 3 components
 
 ### To Use Current Build:
 ```bash
 # Sync Arch databases
-packmgr --base-dir /kod sync
+chisel --base-dir /kod sync
 
 # Search for packages
-packmgr --base-dir /kod search vim
+chisel --base-dir /kod search vim
 
 # Download packages
-packmgr --base-dir /kod download bash
+chisel --base-dir /kod download bash
 
 # Extract to store
-packmgr --base-dir /kod extract /kod/cache/bash-*.pkg.tar.zst
+chisel --base-dir /kod extract /kod/cache/bash-*.pkg.tar.zst
 
 # Verify store
 ls -la /kod/store/bash/current/

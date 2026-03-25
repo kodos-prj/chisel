@@ -7,13 +7,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yourusername/packmgr-go/pkg/alpm"
-	"github.com/yourusername/packmgr-go/pkg/config"
-	"github.com/yourusername/packmgr-go/pkg/download"
-	"github.com/yourusername/packmgr-go/pkg/extract"
-	"github.com/yourusername/packmgr-go/pkg/registry"
-	"github.com/yourusername/packmgr-go/pkg/store"
-	"github.com/yourusername/packmgr-go/pkg/wrapper"
+	"github.com/kodos-prj/chisel/pkg/alpm"
+	"github.com/kodos-prj/chisel/pkg/config"
+	"github.com/kodos-prj/chisel/pkg/download"
+	"github.com/kodos-prj/chisel/pkg/extract"
+	"github.com/kodos-prj/chisel/pkg/registry"
+	"github.com/kodos-prj/chisel/pkg/store"
+	"github.com/kodos-prj/chisel/pkg/wrapper"
 )
 
 // InstallCommand handles installing packages.
@@ -47,7 +47,7 @@ type InstallOptions struct {
 }
 
 // Run executes the install command.
-// Usage: packmgr install [options] <package> [package2] ...
+// Usage: chisel install [options] <package> [package2] ...
 //
 //	--no-deps      Skip dependency resolution
 //	--no-extract   Skip extraction (assume already in store)

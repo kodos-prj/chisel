@@ -1,14 +1,14 @@
-// Package cli implements command-line interface commands for packmgr.
+// Package cli implements command-line interface commands for chisel.
 package cli
 
 import (
 	"fmt"
 
-	"github.com/yourusername/packmgr-go/pkg/alpm"
-	"github.com/yourusername/packmgr-go/pkg/config"
+	"github.com/kodos-prj/chisel/pkg/alpm"
+	"github.com/kodos-prj/chisel/pkg/config"
 )
 
-// SearchCommand implements the 'packmgr search' command.
+// SearchCommand implements the 'chisel search' command.
 // It searches for packages in the synced databases.
 type SearchCommand struct {
 	config *config.Config

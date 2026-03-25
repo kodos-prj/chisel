@@ -1,28 +1,28 @@
-# Packmgr - Cross-Distribution Package Manager
+# Chisel - Cross-Distribution Package Manager
 
-Bring **Arch Linux packages to ANY Linux distribution**. Packmgr runs Arch packages natively on Ubuntu, Fedora, Debian, and more with complete dependency isolation and zero host contamination.
+Bring **Arch Linux packages to ANY Linux distribution**. Chisel runs Arch packages natively on Ubuntu, Fedora, Debian, and more with complete dependency isolation and zero host contamination.
 
 ## Purpose
 
-Packmgr is a **cross-distribution package manager** that solves a real problem: stable LTS distributions (Ubuntu 22.04, Debian 12) with outdated packages, but you need bleeding-edge development tools.
+Chisel is a **cross-distribution package manager** that solves a real problem: stable LTS distributions (Ubuntu 22.04, Debian 12) with outdated packages, but you need bleeding-edge development tools.
 
-**Without Packmgr:**
+**Without Chisel:**
 - Ubuntu 22.04 ships Python 3.10 (2021), but you need Python 3.12
 - Option 1: Compile from source (time-consuming, error-prone)
 - Option 2: Add PPAs (security risk, conflicts with system packages)
 - Option 3: Upgrade entire OS (breaks stability)
 
-**With Packmgr:**
+**With Chisel:**
 ```bash
-packmgr sync
-packmgr install python  # Get Python 3.12 from Arch, isolated
+chisel sync
+chisel install python  # Get Python 3.12 from Arch, isolated
 ```
 
 Your system's Python 3.10 stays untouched, Arch's Python 3.12 works perfectly alongside it. No conflicts, no contamination.
 
 ## Key Innovation
 
-Packmgr brings Arch packages to ANY distribution by:
+Chisel brings Arch packages to ANY distribution by:
 1. **Complete dependency isolation** - ALL dependencies from Arch (glibc, gcc-libs, everything)
 2. **Wrapper scripts** - Set `LD_LIBRARY_PATH` dynamically so binaries load Arch libraries, not host libraries
 3. **Custom ALPM root** - Uses `/kod/` instead of `/`, works independently of host package manager
@@ -117,13 +117,13 @@ sudo dnf install libalpm-devel
 # pacman -S pacman
 
 # Build the project
-go build -o packmgr ./cmd/packmgr
+go build -o chisel ./cmd/chisel
 
 # Sync Arch databases
-sudo ./packmgr sync
+sudo ./chisel sync
 
 # Install a package (with ALL dependencies from Arch)
-sudo ./packmgr install vim
+sudo ./chisel install vim
 
 # Run tests
 go test ./...
@@ -131,7 +131,7 @@ go test ./...
 
 ## Key Concepts
 
-### What is Packmgr?
+### What is Chisel?
 A **cross-distribution package manager** that:
 - Brings **Arch Linux packages** to Ubuntu, Fedora, Debian, and other distributions
 - Uses **complete dependency isolation** - ALL dependencies from Arch, not host system
@@ -145,7 +145,7 @@ A **cross-distribution package manager** that:
 - Written in **Go** for performance, safety, and single-binary deployment
 
 ### Core Features (v1.0)
-- **Sync** Arch databases from mirrors (`packmgr sync`)
+- **Sync** Arch databases from mirrors (`chisel sync`)
 - **Install** packages with complete dependency isolation (ALL deps from Arch)
 - **Wrapper generation** for library path management
 - **Remove** packages with orphan cleanup
@@ -249,14 +249,14 @@ A **cross-distribution package manager** that:
 ### CLI
 - **Framework**: Cobra (for complex subcommands)
 - **Output**: Color-coded text, progress indicators
-- **Config**: JSON format (`/etc/packmgr/config.json`)
+- **Config**: JSON format (`/etc/chisel/config.json`)
 
 ### Data Storage
 - **Registry**: JSON file at `/kod/registry.json`
 - **Package Store**: Directory structure at `/kod/store/`
 - **Databases**: Arch databases at `/kod/db/` (synced from mirrors)
 - **Wrappers**: Shell scripts at `/kod/wrappers/`
-- **Configuration**: `/etc/packmgr/config.json` (JSON, not YAML)
+- **Configuration**: `/etc/chisel/config.json` (JSON, not YAML)
 
 ### Testing
 - **Unit Tests**: Go's built-in testing package
@@ -322,8 +322,8 @@ A **cross-distribution package manager** that:
 1. ✅ Review and update all documentation to v4.0
 2. ⬜ Implement database sync system (download core.db, extra.db from mirrors)
 3. ⬜ Initialize ALPM with /kod root and /kod/db paths
-4. ⬜ Implement `packmgr sync` command
-5. ⬜ Implement `packmgr search` and `packmgr info` commands
+4. ⬜ Implement `chisel sync` command
+5. ⬜ Implement `chisel search` and `chisel info` commands
 
 ### Short-term (Weeks 2-3 - Phases 2-3)
 - Implement package extraction (zstd support)
@@ -390,14 +390,14 @@ A **cross-distribution package manager** that:
 ### Building
 ```bash
 # Clone the repository
-cd /home/abuss/Work/devel/packmgr-go
+cd /home/abuss/Work/devel/chisel-go
 
 # Install libalpm
 # Ubuntu/Debian:
 sudo apt-get install libalpm-dev
 
 # Build
-go build -o packmgr ./cmd/packmgr
+go build -o chisel ./cmd/chisel
 
 # Run tests
 go test ./...
@@ -406,15 +406,15 @@ go test ./...
 go test -cover ./...
 
 # Build Docker test images
-docker build -f test/docker/ubuntu-22.04.Dockerfile -t packmgr-test-ubuntu .
-docker build -f test/docker/fedora-40.Dockerfile -t packmgr-test-fedora .
+docker build -f test/docker/ubuntu-22.04.Dockerfile -t chisel-test-ubuntu .
+docker build -f test/docker/fedora-40.Dockerfile -t chisel-test-fedora .
 ```
 
 ### Project Structure
 ```
-packmgr-go/
+chisel-go/
 ├── cmd/
-│   └── packmgr/          # Main CLI entry point
+│   └── chisel/          # Main CLI entry point
 │       └── main.go
 ├── pkg/                  # Public reusable packages
 │   ├── config/           # Configuration (JSON)
@@ -448,15 +448,15 @@ packmgr-go/
 ### Testing on Multiple Distributions
 ```bash
 # Test on Ubuntu 22.04
-docker run -it packmgr-test-ubuntu bash
+docker run -it chisel-test-ubuntu bash
 ./run-tests.sh
 
 # Test on Fedora 40
-docker run -it packmgr-test-fedora bash
+docker run -it chisel-test-fedora bash
 ./run-tests.sh
 
 # Test on Debian 12
-docker run -it packmgr-test-debian bash
+docker run -it chisel-test-debian bash
 ./run-tests.sh
 ```
 
@@ -484,7 +484,7 @@ If you have questions while implementing:
 
 ## License
 
-This documentation is part of the packmgr project. License TBD.
+This documentation is part of the chisel project. License TBD.
 
 ---
 

@@ -1,4 +1,4 @@
-// Package config manages packmgr configuration.
+// Package config manages chisel configuration.
 package config
 
 import (
@@ -10,18 +10,18 @@ import (
 
 const (
 	// DefaultConfigPath is the default location for the config file
-	DefaultConfigPath = "/etc/packmgr/config.json"
+	DefaultConfigPath = "/etc/chisel/config.json"
 
-	// DefaultBaseDir is the default base directory for all packmgr data
+	// DefaultBaseDir is the default base directory for all chisel data
 	DefaultBaseDir = "/kod"
 
 	// DefaultSymlinkRoot is the default root for symlinks (system root)
 	DefaultSymlinkRoot = "/"
 )
 
-// Config represents the packmgr configuration.
+// Config represents the chisel configuration.
 type Config struct {
-	// BaseDir is the base directory for all packmgr data (/kod by default)
+	// BaseDir is the base directory for all chisel data (/kod by default)
 	// All paths below are relative to this unless they're absolute
 	BaseDir string `json:"base_dir"`
 

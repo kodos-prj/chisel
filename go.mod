@@ -1,4 +1,4 @@
-module github.com/yourusername/packmgr-go
+module github.com/kodos-prj/chisel
 
 go 1.25.6
 

@@ -1,6 +1,6 @@
-# Packmgr System Diagrams
+# Chisel System Diagrams
 
-This document contains detailed visual diagrams to help understand the packmgr cross-distribution architecture, data flows, and component interactions.
+This document contains detailed visual diagrams to help understand the chisel cross-distribution architecture, data flows, and component interactions.
 
 **Version:** 4.0 (Cross-Distribution Architecture)  
 **Date:** 2026-03-21
@@ -69,9 +69,9 @@ This document contains detailed visual diagrams to help understand the packmgr c
 ### 1.2 Go Package Structure
 
 ```
-packmgr-go/
+chisel-go/
 │
-├── cmd/packmgr/          [Entry Point]
+├── cmd/chisel/          [Entry Point]
 │   └── main.go           - CLI initialization
 │
 ├── internal/             [Core Implementation]
@@ -161,7 +161,7 @@ packmgr-go/
 │  glibc 2.35    │  glibc 2.39 │  glibc 2.36 │  glibc 2.39       │
 └────────────────┬──────────────────────────────────────────────────┘
                  │
-                 │  Packmgr runs on ANY distribution
+                 │  Chisel runs on ANY distribution
                  │
 ┌────────────────▼──────────────────────────────────────────────────┐
 │                        PACKMGR                                    │
@@ -184,7 +184,7 @@ packmgr-go/
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-**Key Principle:** Packmgr brings Arch packages to ANY Linux distribution by:
+**Key Principle:** Chisel brings Arch packages to ANY Linux distribution by:
 1. Installing ALL dependencies from Arch (complete isolation)
 2. Using wrapper scripts to set library paths dynamically
 3. Never mixing host and Arch libraries
@@ -243,7 +243,7 @@ packmgr-go/
 ```
 ┌──────────────────────────────────────────────────────────────────┐
 │  USER SYNCS DATABASES                                            │
-│  user@ubuntu:~$ sudo packmgr sync                                │
+│  user@ubuntu:~$ sudo chisel sync                                │
 └────────────────────────────┬─────────────────────────────────────┘
                              │
                              ▼
@@ -285,7 +285,7 @@ packmgr-go/
 ```
 
 **Why explicit sync?**
-- Packmgr is supplementary, not a replacement for host package manager
+- Chisel is supplementary, not a replacement for host package manager
 - User controls when to check for updates
 - Reduces unnecessary network traffic
 
@@ -294,7 +294,7 @@ packmgr-go/
 ```
 ┌──────────────────────────────────────────────────────────────────┐
 │  USER INSTALLS PACKAGE                                           │
-│  user@ubuntu:~$ sudo packmgr install vim                         │
+│  user@ubuntu:~$ sudo chisel install vim                         │
 └────────────────────────────┬─────────────────────────────────────┘
                              │
                              ▼
@@ -382,7 +382,7 @@ packmgr-go/
 └─────────────────────────────────────────────────────────────────┘
 
 1. User Command
-   $ packmgr install vim
+   $ chisel install vim
                 │
                 ▼
 2. CLI Parsing
@@ -474,7 +474,7 @@ packmgr-go/
 └─────────────────────────────────────────────────────────────────┘
 
 1. User Command
-   $ packmgr remove vim
+   $ chisel remove vim
                 │
                 ▼
 2. CLI Parsing
@@ -550,7 +550,7 @@ packmgr-go/
 └─────────────────────────────────────────────────────────────────┘
 
 1. User Command
-   $ packmgr search python
+   $ chisel search python
                 │
                 ▼
 2. ALPM Search
@@ -585,7 +585,7 @@ packmgr-go/
 └─────────────────────────────────────────────────────────────────┘
 
 1. User Command
-   $ packmgr info vim
+   $ chisel info vim
                 │
                 ▼
 2. Check Registry First

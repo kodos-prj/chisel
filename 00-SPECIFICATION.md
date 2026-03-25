@@ -1,4 +1,4 @@
-# Packmgr - Symlink-Based Package Manager
+# Chisel - Symlink-Based Package Manager
 ## Comprehensive System Specification
 
 **Version:** 4.2 (Phase 3 In Progress - Symlink Management & Wrapper Scripts)  
@@ -29,7 +29,7 @@
 
 ### 1.1 Project Vision
 
-Packmgr is a **cross-distribution package manager** that brings Arch Linux packages to **any Linux distribution** (Ubuntu, Fedora, Debian, etc.) using a central package store with complete dependency isolation:
+Chisel is a **cross-distribution package manager** that brings Arch Linux packages to **any Linux distribution** (Ubuntu, Fedora, Debian, etc.) using a central package store with complete dependency isolation:
 
 - **Cross-distribution compatibility** - Run Arch packages on any glibc-based Linux distribution
 - **Complete dependency isolation** - All dependencies from Arch, not the host system
@@ -55,7 +55,7 @@ Packmgr is a **cross-distribution package manager** that brings Arch Linux packa
 
 ### 1.3 Key Differentiators
 
-| Feature | Host Package Manager | Packmgr | NixOS |
+| Feature | Host Package Manager | Chisel | NixOS |
 |---------|---------------------|---------|-------|
 | Cross-distribution | ❌ | ✅ | ✅ |
 | Uses Arch packages | N/A | ✅ | ❌ |
@@ -67,7 +67,7 @@ Packmgr is a **cross-distribution package manager** that brings Arch Linux packa
 | Host system impact | High | None | None |
 | Boot integration | N/A | ❌ (v1) | ✅ |
 
-**Key Innovation:** Packmgr brings Arch packages to ANY Linux distribution with complete isolation - no mixing of host libraries, no conflicts, just works.
+**Key Innovation:** Chisel brings Arch packages to ANY Linux distribution with complete isolation - no mixing of host libraries, no conflicts, just works.
 
 ---
 
@@ -83,11 +83,11 @@ Packmgr is a **cross-distribution package manager** that brings Arch Linux packa
 - **Static binaries:** Not available for most packages, huge size
 - **Distribution-specific repos:** Limited to one distribution
 
-**Packmgr's Solution:** Ship ALL dependencies from Arch (including system libraries) and use wrapper scripts to set library paths dynamically.
+**Chisel's Solution:** Ship ALL dependencies from Arch (including system libraries) and use wrapper scripts to set library paths dynamically.
 
 ### 2.2 Architecture Overview
 
-Packmgr achieves cross-distribution compatibility through three key mechanisms:
+Chisel achieves cross-distribution compatibility through three key mechanisms:
 
 #### 2.2.1 Complete Dependency Isolation
 
@@ -99,7 +99,7 @@ Example: Installing vim on Ubuntu
 Traditional approach (FAILS):
   vim binary → Ubuntu's glibc 2.35 → CRASH (incompatible)
   
-Packmgr approach (WORKS):
+Chisel approach (WORKS):
   vim binary → Arch's glibc 2.39 (in /kod/store/) → SUCCESS
              → Arch's ncurses (in /kod/store/)
              → Arch's gcc-libs (in /kod/store/)
@@ -144,7 +144,7 @@ Success! vim runs with Arch libraries on Ubuntu
 - Root directory: `/`
 - Tightly integrated with system
 
-**Packmgr's ALPM usage:**
+**Chisel's ALPM usage:**
 - Databases in `/kod/db/`
 - Root directory: `/kod/`
 - Completely independent of host package manager
@@ -153,7 +153,7 @@ Success! vim runs with Arch libraries on Ubuntu
 ### 2.3 Directory Structure
 
 ```
-/kod/                              # Packmgr root (isolated from host)
+/kod/                              # Chisel root (isolated from host)
 ├── db/                            # Package databases (synced from Arch mirrors)
 │   ├── core.db                    # Core repository database
 │   ├── extra.db                   # Extra repository database
@@ -187,19 +187,19 @@ Success! vim runs with Arch libraries on Ubuntu
 │
 └── registry.json                  # Tracking of installed packages
 
-/usr/bin/                          # System binaries (host + packmgr)
-├── vim -> /kod/wrappers/vim       # Packmgr-managed (points to wrapper)
-├── bash -> /kod/wrappers/bash     # Packmgr-managed (points to wrapper)
-└── ls                             # Host system binary (NOT managed by packmgr)
+/usr/bin/                          # System binaries (host + chisel)
+├── vim -> /kod/wrappers/vim       # Chisel-managed (points to wrapper)
+├── bash -> /kod/wrappers/bash     # Chisel-managed (points to wrapper)
+└── ls                             # Host system binary (NOT managed by chisel)
 ```
 
 ### 2.4 Database Synchronization
 
-Unlike pacman which updates databases automatically, packmgr uses **explicit database sync**:
+Unlike pacman which updates databases automatically, chisel uses **explicit database sync**:
 
 ```bash
 # User must explicitly sync databases
-packmgr sync
+chisel sync
 
 # Downloads from Arch mirrors:
 #   https://mirror.example.com/archlinux/core/os/x86_64/core.db
@@ -211,7 +211,7 @@ packmgr sync
 ```
 
 **Why explicit sync?**
-- Packmgr is supplementary to host package manager (not a replacement)
+- Chisel is supplementary to host package manager (not a replacement)
 - Users install packages infrequently
 - Reduces unnecessary network traffic
 - User controls when to check for updates
@@ -256,14 +256,14 @@ packmgr sync
 
 ```bash
 # 1. User syncs databases (downloads core.db, extra.db from Arch mirrors)
-user@ubuntu:~$ sudo packmgr sync
+user@ubuntu:~$ sudo chisel sync
 Syncing databases...
   core.db                    [######################] 100%
   extra.db                   [######################] 100%
 Database sync complete
 
 # 2. User installs vim
-user@ubuntu:~$ sudo packmgr install vim
+user@ubuntu:~$ sudo chisel install vim
 Resolving dependencies...
 Packages to install (12):
   glibc-2.39-1 (22.3 MB)
@@ -349,7 +349,7 @@ user@ubuntu:~$ vim test.txt
 
 #### 3.2.1 Package Store
 
-The **package store** is a centralized directory at `/kod/store/` where all package files are extracted. Unlike traditional package managers, packmgr stores ALL dependencies including system libraries.
+The **package store** is a centralized directory at `/kod/store/` where all package files are extracted. Unlike traditional package managers, chisel stores ALL dependencies including system libraries.
 
 ```
 /kod/store/
@@ -400,13 +400,13 @@ Binary loads Arch libraries from /kod/store/ (not /usr/lib/)
 **Wrapper script example:**
 ```bash
 #!/bin/bash
-# Auto-generated by packmgr
+# Auto-generated by chisel
 export LD_LIBRARY_PATH="/kod/store/vim/9.0.1-1/usr/lib:/kod/store/glibc/2.39-1/usr/lib:/kod/store/ncurses/6.4-1/usr/lib:$LD_LIBRARY_PATH"
 exec /kod/store/vim/9.0.1-1/usr/bin/vim "$@"
 ```
 
 **Benefits:**
-- Clear what's managed by packmgr (symlinks)
+- Clear what's managed by chisel (symlinks)
 - Library path isolation (no mixing with host)
 - Native filesystem behavior (no special mounting)
 - Easy to debug (just `cat /kod/wrappers/vim`)
@@ -441,7 +441,7 @@ A JSON file tracking installed packages:
 #### 4.1.1 Installation Flow
 
 ```
-User Request: packmgr install vim
+User Request: chisel install vim
     ↓
 Dependency Resolution (via ALPM with /kod root)
     ↓
@@ -479,7 +479,7 @@ Success
 #### 4.1.2 Removal Flow
 
 ```
-User Request: packmgr remove vim
+User Request: chisel remove vim
     ↓
 Check Reverse Dependencies (what needs vim?)
     ↓
@@ -509,14 +509,14 @@ Success
 
 ```bash
 # Sync package databases from Arch mirrors
-packmgr sync
+chisel sync
 ```
 
 **Flow:**
 ```
-User Request: packmgr sync
+User Request: chisel sync
     ↓
-Read Mirror URLs from config (/etc/packmgr/config.json)
+Read Mirror URLs from config (/etc/chisel/config.json)
     ↓
 Download core.db from https://mirror.example.com/archlinux/core/os/x86_64/
     ↓
@@ -532,7 +532,7 @@ Success - databases ready for queries
 ```
 
 **Why explicit sync?**
-- Packmgr is supplementary to host package manager
+- Chisel is supplementary to host package manager
 - Users install packages infrequently
 - User controls when to check for updates
 - Reduces unnecessary network traffic
@@ -541,17 +541,17 @@ Success - databases ready for queries
 
 ```bash
 # Sync package databases
-packmgr sync
+chisel sync
 
 # Upgrade all packages
-packmgr upgrade
+chisel upgrade
 
 # Upgrade specific package
-packmgr upgrade vim
+chisel upgrade vim
 ```
 
 **Flow:**
-1. User runs `packmgr sync` to update databases
+1. User runs `chisel sync` to update databases
 2. Query ALPM for available updates
 3. Calculate upgrade plan (dependencies, conflicts)
 4. Download new versions
@@ -565,7 +565,7 @@ packmgr upgrade vim
 #### 4.2.1 Search Packages
 
 ```bash
-packmgr search python
+chisel search python
 ```
 
 Searches package names and descriptions in repositories.
@@ -581,7 +581,7 @@ extra/python-pip 23.3-1
 #### 4.2.2 Query Package Info
 
 ```bash
-packmgr info bash
+chisel info bash
 ```
 
 **Output:**
@@ -599,10 +599,10 @@ Description  : The GNU Bourne Again shell
 #### 4.2.3 List Installed Packages
 
 ```bash
-packmgr list
+chisel list
 ```
 
-Lists all packages managed by packmgr.
+Lists all packages managed by chisel.
 
 **Output:**
 ```
@@ -614,7 +614,7 @@ nginx      1.24.0-1  (extra)
 #### 4.2.4 Show Package Files
 
 ```bash
-packmgr files bash
+chisel files bash
 ```
 
 **Output:**
@@ -630,23 +630,23 @@ packmgr files bash
 
 ```bash
 # Remove packages not in registry
-packmgr cleanup
+chisel cleanup
 
 # Keep last N versions
-packmgr cleanup --keep 3
+chisel cleanup --keep 3
 
 # Dry run
-packmgr cleanup --dry-run
+chisel cleanup --dry-run
 ```
 
 #### 4.3.2 Verify Installation
 
 ```bash
 # Verify all symlinks are correct
-packmgr verify
+chisel verify
 
 # Verify specific package
-packmgr verify bash
+chisel verify bash
 ```
 
 **Checks:**
@@ -657,12 +657,12 @@ packmgr verify bash
 ### 11.4 System Status
 
 ```bash
-packmgr status
+chisel status
 ```
 
 **Output:**
 ```
-Packmgr Status:
+Chisel Status:
   Installed packages: 245
   Store size: 2.5 GB
   Store location: /kod/store
@@ -677,9 +677,9 @@ Packmgr Status:
 ### 5.1 Go Project Structure
 
 ```
-packmgr-go/
+chisel-go/
 ├── cmd/
-│   └── packmgr/
+│   └── chisel/
 │       └── main.go              # CLI entry point
 │
 ├── pkg/                          # Public reusable packages
@@ -803,7 +803,7 @@ packmgr-go/
 #### Installation Data Flow
 
 ```
-1. CLI receives: packmgr install vim
+1. CLI receives: chisel install vim
    │
 2. PackageManager.Install("vim")
    │
@@ -834,7 +834,7 @@ packmgr-go/
 **Story 1:** "As a user, I want to install vim and have it work immediately."
 
 **Acceptance Criteria:**
-- ✅ `packmgr install vim` downloads and installs vim
+- ✅ `chisel install vim` downloads and installs vim
 - ✅ `vim` command works after installation
 - ✅ Dependencies are automatically installed
 - ✅ No manual configuration needed
@@ -842,7 +842,7 @@ packmgr-go/
 **Story 2:** "As a user, I want to see what packages I have installed."
 
 **Acceptance Criteria:**
-- ✅ `packmgr list` shows all installed packages
+- ✅ `chisel list` shows all installed packages
 - ✅ Output includes name, version, repository
 - ✅ Can filter by explicit vs dependency
 
@@ -874,7 +874,7 @@ packmgr-go/
 **Story 6:** "As a sysadmin, I want to clean up old package versions to save space."
 
 **Acceptance Criteria:**
-- ✅ `packmgr cleanup` removes unused packages from store
+- ✅ `chisel cleanup` removes unused packages from store
 - ✅ Can specify retention policy (keep last N versions)
 - ✅ Dry-run mode to preview what will be deleted
 
@@ -968,7 +968,7 @@ packmgr-go/
 - **CPU:** 2+ cores (for concurrent downloads and extraction)
 - **RAM:** 2 GB+ (for large dependency resolution)
 
-**Warning:** Storage overhead is 2-3x compared to native package managers due to complete dependency isolation. Example: vim = ~60MB natively, ~200MB with packmgr (includes glibc, gcc-libs, etc. from Arch).
+**Warning:** Storage overhead is 2-3x compared to native package managers due to complete dependency isolation. Example: vim = ~60MB natively, ~200MB with chisel (includes glibc, gcc-libs, etc. from Arch).
 
 ---
 
@@ -976,7 +976,7 @@ packmgr-go/
 
 ### 8.1 Configuration
 
-Configuration in JSON format (not YAML) at `/etc/packmgr/config.json`:
+Configuration in JSON format (not YAML) at `/etc/chisel/config.json`:
 
 ```json
 {
@@ -1000,7 +1000,7 @@ Configuration in JSON format (not YAML) at `/etc/packmgr/config.json`:
   "keep_versions": 3,
   
   "log_level": "info",
-  "log_file": "/var/log/packmgr.log"
+  "log_file": "/var/log/chisel.log"
 }
 ```
 
@@ -1131,7 +1131,7 @@ type Config struct {
 ### 11.1 Command Structure
 
 ```bash
-packmgr <command> [options] [arguments]
+chisel <command> [options] [arguments]
 ```
 
 ### 11.2 Package Management Commands
@@ -1139,7 +1139,7 @@ packmgr <command> [options] [arguments]
 #### Install
 
 ```bash
-packmgr install <package>...
+chisel install <package>...
 
 Options:
   --no-confirm       Skip confirmation prompts
@@ -1147,14 +1147,14 @@ Options:
   --as-dep           Install as dependency
   
 Examples:
-  packmgr install vim
-  packmgr install vim bash git --no-confirm
+  chisel install vim
+  chisel install vim bash git --no-confirm
 ```
 
 #### Remove
 
 ```bash
-packmgr remove <package>...
+chisel remove <package>...
 
 Options:
   --no-confirm       Skip confirmation prompts
@@ -1163,34 +1163,34 @@ Options:
   --cleanup          Remove from store immediately
   
 Examples:
-  packmgr remove vim
-  packmgr remove vim --cleanup
+  chisel remove vim
+  chisel remove vim --cleanup
 ```
 
 #### Upgrade
 
 ```bash
-packmgr upgrade [package]...
+chisel upgrade [package]...
 
 Options:
   --no-confirm       Skip confirmation prompts
   --dry-run          Show what would be upgraded
   
 Examples:
-  packmgr upgrade              # Upgrade all
-  packmgr upgrade vim bash     # Upgrade specific packages
+  chisel upgrade              # Upgrade all
+  chisel upgrade vim bash     # Upgrade specific packages
 ```
 
 #### Sync
 
 ```bash
-packmgr sync
+chisel sync
 
 Options:
   --refresh          Force database refresh
   
 Examples:
-  packmgr sync
+  chisel sync
 ```
 
 ### 11.3 Query Commands
@@ -1198,26 +1198,26 @@ Examples:
 #### Search
 
 ```bash
-packmgr search <query>
+chisel search <query>
 
 Examples:
-  packmgr search python
-  packmgr search "text editor"
+  chisel search python
+  chisel search "text editor"
 ```
 
 #### Info
 
 ```bash
-packmgr info <package>
+chisel info <package>
 
 Examples:
-  packmgr info vim
+  chisel info vim
 ```
 
 #### List
 
 ```bash
-packmgr list [options]
+chisel list [options]
 
 Options:
   --explicit         Show only explicitly installed
@@ -1225,17 +1225,17 @@ Options:
   --quiet            Show only names
   
 Examples:
-  packmgr list
-  packmgr list --explicit
+  chisel list
+  chisel list --explicit
 ```
 
 #### Files
 
 ```bash
-packmgr files <package>
+chisel files <package>
 
 Examples:
-  packmgr files vim
+  chisel files vim
 ```
 
 ### 11.4 Store Management Commands
@@ -1243,7 +1243,7 @@ Examples:
 #### Cleanup
 
 ```bash
-packmgr cleanup [options]
+chisel cleanup [options]
 
 Options:
   --keep <N>         Keep last N versions
@@ -1251,27 +1251,27 @@ Options:
   --aggressive       Remove all unreferenced packages
   
 Examples:
-  packmgr cleanup --keep 3
-  packmgr cleanup --dry-run
+  chisel cleanup --keep 3
+  chisel cleanup --dry-run
 ```
 
 #### Verify
 
 ```bash
-packmgr verify [package]
+chisel verify [package]
 
 Examples:
-  packmgr verify              # Verify all
-  packmgr verify vim          # Verify specific package
+  chisel verify              # Verify all
+  chisel verify vim          # Verify specific package
 ```
 
 #### Status
 
 ```bash
-packmgr status
+chisel status
 
 Examples:
-  packmgr status
+  chisel status
 ```
 
 ### 11.5 Global Options
@@ -1539,7 +1539,7 @@ exec "/kod/store/btop/1.4.6-1/usr/bin/btop" "$@"
 
 ---
 
-### 3.4 COMPLETED: CLI Integration (`cmd/packmgr/main.go`)
+### 3.4 COMPLETED: CLI Integration (`cmd/chisel/main.go`)
 
 **Status:** ✅ BASIC WIRING COMPLETE - Needs generation ID support
 
@@ -1556,7 +1556,7 @@ Available Commands (Phase 3):
 
 **To Be Enhanced:**
 - Add `--generation` flag support
-- Add `PACKMGR_GENERATION` environment variable support
+- Add `CHISEL_GENERATION` environment variable support
 
 ---
 
@@ -1589,7 +1589,7 @@ deps, err := client.ResolveDependencies(pkgName)  // Returns [libc, zstd, btop]
 ### **Task B: Add Generation ID Support** (Priority: HIGH)
 
 **Location:** 
-- `cmd/packmgr/main.go` - Add global flag and env var
+- `cmd/chisel/main.go` - Add global flag and env var
 - `internal/cli/install.go` - Accept and use generation ID
 
 **Planned Implementation:**
@@ -1598,9 +1598,9 @@ deps, err := client.ResolveDependencies(pkgName)  // Returns [libc, zstd, btop]
 var generationID string
 flag.StringVar(&generationID, "generation", "", "Generation ID for installation")
 
-// Check PACKMGR_GENERATION env var if flag not set
+// Check CHISEL_GENERATION env var if flag not set
 if generationID == "" {
-  generationID = os.Getenv("PACKMGR_GENERATION")
+  generationID = os.Getenv("CHISEL_GENERATION")
 }
 
 // Pass to install command
@@ -1839,7 +1839,7 @@ for _, pkgData := range extractedPackages {
 #### Installation Flow (COMPLETED)
 
 ```
-User: packmgr --base-dir /tmp/kod --generation gen-001 install btop
+User: chisel --base-dir /tmp/kod --generation gen-001 install btop
 
 Step 1: Resolve Dependencies (⏳ TO FIX)
   client.ResolveDependencies("btop")
@@ -1916,7 +1916,7 @@ Kernel executes:
    - Returns packages in correct order
 
 2. ✅ **Optional generation support**
-   - `--generation` flag + `PACKMGR_GENERATION` env var
+   - `--generation` flag + `CHISEL_GENERATION` env var
    - If not provided: skip generation directory (simpler use case)
    - If provided: create full generation hierarchy
 
@@ -1953,7 +1953,7 @@ Kernel executes:
 ```
 
 ### Manual Testing Done
-- ✅ `packmgr --base-dir /tmp/kod install btop`
+- ✅ `chisel --base-dir /tmp/kod install btop`
   - Downloads 1 package (btop only, no deps)
   - Extracts 61 files
   - Creates wrappers (shown in output)
@@ -2050,7 +2050,7 @@ Kernel executes:
 
 ### Package Download Flow
 ```
-User: packmgr --base-dir /tmp/kod download bash
+User: chisel --base-dir /tmp/kod download bash
   ↓
 1. ALPM resolves package info (name, version, repo)
 2. Downloader builds URL (mirror + repo + arch + filename)
@@ -2061,7 +2061,7 @@ User: packmgr --base-dir /tmp/kod download bash
 
 ### Package Extraction Flow
 ```
-User: packmgr --base-dir /tmp/kod extract /tmp/kod/cache/bash-*.pkg.tar.zst
+User: chisel --base-dir /tmp/kod extract /tmp/kod/cache/bash-*.pkg.tar.zst
   ↓
 1. Parse filename: bash-5.3.9-1-x86_64 → name=bash, version=5.3.9-1
 2. zstd decompress and tar extract
@@ -2235,8 +2235,8 @@ User: packmgr --base-dir /tmp/kod extract /tmp/kod/cache/bash-*.pkg.tar.zst
 
 **Compile:**
 ```bash
-cd /home/abuss/Work/devel/packmgr-go
-go build -o packmgr ./cmd/packmgr
+cd /home/abuss/Work/devel/chisel-go
+go build -o chisel ./cmd/chisel
 ```
 
 **Test:**
@@ -2247,16 +2247,16 @@ go test ./...  # All tests pass
 **Use:**
 ```bash
 # Sync databases
-./packmgr --base-dir /tmp/kod sync
+./chisel --base-dir /tmp/kod sync
 
 # Search packages  
-./packmgr --base-dir /tmp/kod search vim
+./chisel --base-dir /tmp/kod search vim
 
 # Download package
-./packmgr --base-dir /tmp/kod download bash
+./chisel --base-dir /tmp/kod download bash
 
 # Extract package
-./packmgr --base-dir /tmp/kod extract /tmp/kod/cache/bash-*.pkg.tar.zst
+./chisel --base-dir /tmp/kod extract /tmp/kod/cache/bash-*.pkg.tar.zst
 ```
 
 ---

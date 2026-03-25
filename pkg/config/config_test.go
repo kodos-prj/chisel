@@ -140,7 +140,7 @@ func TestLoadPartialConfig(t *testing.T) {
 
 	// Write a partial config (only base_dir)
 	partialJSON := `{
-  "base_dir": "/opt/packmgr"
+  "base_dir": "/opt/chisel"
 }`
 	err := os.WriteFile(configPath, []byte(partialJSON), 0644)
 	if err != nil {
@@ -154,17 +154,17 @@ func TestLoadPartialConfig(t *testing.T) {
 	}
 
 	// base_dir should be set
-	if cfg.BaseDir != "/opt/packmgr" {
-		t.Errorf("Expected BaseDir /opt/packmgr, got %s", cfg.BaseDir)
+	if cfg.BaseDir != "/opt/chisel" {
+		t.Errorf("Expected BaseDir /opt/chisel, got %s", cfg.BaseDir)
 	}
 
 	// Other fields should be normalized to defaults based on base_dir
-	expectedStore := "/opt/packmgr/store"
+	expectedStore := "/opt/chisel/store"
 	if cfg.StoreRoot != expectedStore {
 		t.Errorf("Expected StoreRoot %s, got %s", expectedStore, cfg.StoreRoot)
 	}
 
-	expectedRegistry := "/opt/packmgr/registry.json"
+	expectedRegistry := "/opt/chisel/registry.json"
 	if cfg.RegistryPath != expectedRegistry {
 		t.Errorf("Expected RegistryPath %s, got %s", expectedRegistry, cfg.RegistryPath)
 	}

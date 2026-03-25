@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yourusername/packmgr-go/pkg/database"
+	"github.com/kodos-prj/chisel/pkg/database"
 )
 
 // TestSearchPackageIntegration tests searching with a real database
@@ -20,7 +20,7 @@ func TestSearchPackageIntegration(t *testing.T) {
 	}
 
 	// Create temporary directory
-	tmpDir, err := os.MkdirTemp("", "packmgr-integration-*")
+	tmpDir, err := os.MkdirTemp("", "chisel-integration-*")
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
@@ -216,7 +216,7 @@ func TestSearchMultipleRepositories(t *testing.T) {
 	}
 
 	// Create temporary directory
-	tmpDir, err := os.MkdirTemp("", "packmgr-multi-repo-*")
+	tmpDir, err := os.MkdirTemp("", "chisel-multi-repo-*")
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}

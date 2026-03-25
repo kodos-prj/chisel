@@ -1,15 +1,15 @@
-// Package cli implements command-line interface commands for packmgr.
+// Package cli implements command-line interface commands for chisel.
 package cli
 
 import (
 	"fmt"
 	"time"
 
-	"github.com/yourusername/packmgr-go/pkg/config"
-	"github.com/yourusername/packmgr-go/pkg/database"
+	"github.com/kodos-prj/chisel/pkg/config"
+	"github.com/kodos-prj/chisel/pkg/database"
 )
 
-// SyncCommand implements the 'packmgr sync' command.
+// SyncCommand implements the 'chisel sync' command.
 // It downloads package databases from configured Arch mirrors.
 type SyncCommand struct {
 	config *config.Config

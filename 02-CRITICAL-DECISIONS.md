@@ -1,6 +1,6 @@
 # Critical Architecture Decisions
 
-This document analyzes the major architectural decisions made in the packmgr cross-distribution design, presenting alternatives considered, trade-offs, and rationale for the chosen approach.
+This document analyzes the major architectural decisions made in the chisel cross-distribution design, presenting alternatives considered, trade-offs, and rationale for the chosen approach.
 
 **Version:** 4.0 (Cross-Distribution Architecture)  
 **Date:** 2026-03-21
@@ -26,7 +26,7 @@ This document analyzes the major architectural decisions made in the packmgr cro
 ## Decision 1: Cross-Distribution Support Strategy
 
 ### Context
-**NEW in v4.0:** Need to decide whether packmgr should work ONLY on Arch Linux or support multiple distributions (Ubuntu, Fedora, Debian, etc.).
+**NEW in v4.0:** Need to decide whether chisel should work ONLY on Arch Linux or support multiple distributions (Ubuntu, Fedora, Debian, etc.).
 
 ### Options Considered
 
@@ -67,7 +67,7 @@ This document analyzes the major architectural decisions made in the packmgr cro
 
 **CHOSEN: Cross-Distribution Support**
 
-Critical insight: Packmgr's unique value is bringing Arch packages to non-Arch systems.
+Critical insight: Chisel's unique value is bringing Arch packages to non-Arch systems.
 
 **Why this is the right choice:**
 1. **Market size**: 10x larger audience (Ubuntu/Fedora/Debian vs Arch)
@@ -313,24 +313,24 @@ Best balance of simplicity, reliability, and debuggability.
 
 #### Option B: Separate Database Sync (CHOSEN)
 
-**Implementation**: Download databases to `/kod/db/` via `packmgr sync`
+**Implementation**: Download databases to `/kod/db/` via `chisel sync`
 
 **Pros**:
 - **Works everywhere**: Ubuntu, Fedora, Debian don't need pacman installed
-- **Independent**: Packmgr doesn't depend on host package manager
+- **Independent**: Chisel doesn't depend on host package manager
 - **User control**: Explicit sync, not automatic
 - **Custom mirrors**: Can use fastest/preferred mirror
 - **Isolation**: No conflicts with host package manager
 
 **Cons**:
-- Extra command (`packmgr sync`) before first use
+- Extra command (`chisel sync`) before first use
 - Databases can become stale if user forgets to sync
 - Additional storage (~5-10 MB for databases)
 
 **Implementation**:
 ```bash
 # User explicitly syncs databases
-packmgr sync
+chisel sync
 
 # Downloads from Arch mirror:
 #   https://mirror.rackspace.com/archlinux/core/os/x86_64/core.db
@@ -343,7 +343,7 @@ packmgr sync
 
 #### Option C: Embedded Database
 
-**Implementation**: Bundle package database in packmgr binary.
+**Implementation**: Bundle package database in chisel binary.
 
 **Pros**:
 - No sync needed
@@ -363,7 +363,7 @@ packmgr sync
 Only option that works for cross-distribution use case.
 
 **Why explicit sync:**
-1. **Supplementary tool**: Packmgr supplements host PM, not replaces it
+1. **Supplementary tool**: Chisel supplements host PM, not replaces it
 2. **Infrequent use**: Users don't install Arch packages daily
 3. **User control**: User decides when to check for updates
 4. **Network efficiency**: No automatic syncs eating bandwidth
@@ -371,11 +371,11 @@ Only option that works for cross-distribution use case.
 **User workflow:**
 ```bash
 # Once a week or before installing packages:
-packmgr sync
+chisel sync
 
 # Then install as needed:
-packmgr install vim
-packmgr install python
+chisel install vim
+chisel install python
 ```
 
 ---
@@ -672,7 +672,7 @@ How to store packages efficiently across the system.
 - **Easy inspection**: Browse `/kod/store/` to see everything
 - **Deduplication**: Each version stored once
 - **Simple rollback**: Just re-point symlinks (future feature)
-- **Clear ownership**: Symlink = managed by packmgr
+- **Clear ownership**: Symlink = managed by chisel
 - **Space efficient**: Shared files across "virtual" generations (future)
 
 **Cons**:
@@ -921,8 +921,8 @@ When to remove packages from `/kod/store/`.
 **Implementation**: Keep packages in store after removal, cleanup manually.
 
 ```bash
-packmgr remove vim        # Removes symlinks, keeps in store
-packmgr cleanup --keep 3  # Manual cleanup
+chisel remove vim        # Removes symlinks, keeps in store
+chisel cleanup --keep 3  # Manual cleanup
 ```
 
 **Pros**:
@@ -946,7 +946,7 @@ keep_versions: 3          # For manual cleanup
 **Implementation**: Delete from store immediately on removal.
 
 ```bash
-packmgr remove vim  # Removes symlinks AND deletes store files
+chisel remove vim  # Removes symlinks AND deletes store files
 ```
 
 **Pros**:
@@ -998,7 +998,7 @@ Arch packages have install scripts (pre/post install/remove). Should we execute 
 
 **Documented Limitations**:
 ```
-Note: packmgr v1.0 does not execute package scripts.
+Note: chisel v1.0 does not execute package scripts.
 Packages requiring scripts may not function fully.
 Use pacman for system-critical packages requiring scripts.
 ```

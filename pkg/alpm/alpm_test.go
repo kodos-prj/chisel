@@ -13,7 +13,7 @@ func TestNewClient(t *testing.T) {
 		t.Skip("libalpm not available on this system")
 	}
 
-	tmpDir, err := os.MkdirTemp("", "packmgr-alpm-test-*")
+	tmpDir, err := os.MkdirTemp("", "chisel-alpm-test-*")
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
@@ -224,7 +224,7 @@ func TestListSyncDBs(t *testing.T) {
 // isLibalpmAvailable checks if libalpm is available on the system
 func isLibalpmAvailable() bool {
 	// Try to create a temporary client to see if libalpm works
-	tmpDir, err := os.MkdirTemp("", "packmgr-check-*")
+	tmpDir, err := os.MkdirTemp("", "chisel-check-*")
 	if err != nil {
 		return false
 	}
@@ -253,7 +253,7 @@ func isLibalpmAvailable() bool {
 func setupTestClient(t *testing.T) (*Client, func()) {
 	t.Helper()
 
-	tmpDir, err := os.MkdirTemp("", "packmgr-alpm-test-*")
+	tmpDir, err := os.MkdirTemp("", "chisel-alpm-test-*")
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
@@ -487,7 +487,7 @@ func TestGetDownloadURL(t *testing.T) {
 func setupTestClientWithDB(t *testing.T) (*Client, func()) {
 	t.Helper()
 
-	tmpDir, err := os.MkdirTemp("", "packmgr-alpm-test-*")
+	tmpDir, err := os.MkdirTemp("", "chisel-alpm-test-*")
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
@@ -532,7 +532,7 @@ func BenchmarkNewClient(b *testing.B) {
 		b.Skip("libalpm not available on this system")
 	}
 
-	tmpDir, err := os.MkdirTemp("", "packmgr-bench-*")
+	tmpDir, err := os.MkdirTemp("", "chisel-bench-*")
 	if err != nil {
 		b.Fatalf("failed to create temp dir: %v", err)
 	}

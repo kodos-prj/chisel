@@ -61,7 +61,7 @@ The main specification document (`00-SPECIFICATION.md`) has been updated to refl
   - ✅ `install` command wired into main CLI
   - ✅ `handleInstall()` function with error handling
   - ✅ Help text updated
-  - ⏳ Missing: --generation flag, PACKMGR_GENERATION env var
+  - ⏳ Missing: --generation flag, CHISEL_GENERATION env var
 
 ---
 
@@ -78,7 +78,7 @@ The main specification document (`00-SPECIFICATION.md`) has been updated to refl
 **Task B: Add Generation ID Support** (10 min)
 - **Features**:
   - `--generation <id>` global flag
-  - `PACKMGR_GENERATION` environment variable
+  - `CHISEL_GENERATION` environment variable
   - Pass to install command
 - **Behavior**: Optional (skip generation dirs if not provided)
 - **Status**: Design complete
@@ -125,11 +125,11 @@ The main specification document (`00-SPECIFICATION.md`) has been updated to refl
 ✅ pkg/store       - 16 tests
 ✅ pkg/symlink     - 14 tests (NEW Phase 3)
 ✅ pkg/wrapper     - 11 tests (NEW Phase 3)
-✅ cmd/packmgr     - (no test file needed, CLI integration)
+✅ cmd/chisel     - (no test file needed, CLI integration)
 ```
 
 ### Manual Testing Done
-- ✅ `packmgr --base-dir /tmp/kod install btop`
+- ✅ `chisel --base-dir /tmp/kod install btop`
   - Downloads package correctly
   - Extracts 61 files
   - Creates wrapper script

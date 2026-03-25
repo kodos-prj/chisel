@@ -1,10 +1,10 @@
 # Configuration Guide
 
-Packmgr supports multiple ways to specify configuration, giving you flexibility for different use cases.
+Chisel supports multiple ways to specify configuration, giving you flexibility for different use cases.
 
 ## Configuration Priority
 
-When packmgr loads configuration, it uses the following priority order (highest to lowest):
+When chisel loads configuration, it uses the following priority order (highest to lowest):
 
 1. **Command-line flags** - Highest priority, overrides everything
 2. **Environment variables** - Second priority  
@@ -19,22 +19,22 @@ Override specific configuration values on the command line:
 
 ```bash
 # Use custom config file
-packmgr -c /path/to/config.json sync
-packmgr --config /path/to/config.json sync
+chisel -c /path/to/config.json sync
+chisel --config /path/to/config.json sync
 
 # Override base directory
-packmgr --base-dir /tmp/packmgr-test sync
+chisel --base-dir /tmp/chisel-test sync
 
 # Override mirror URL
-packmgr --mirror https://mirrors.kernel.org/archlinux sync
+chisel --mirror https://mirrors.kernel.org/archlinux sync
 
 # Combine multiple options
-packmgr -c myconfig.json --base-dir /tmp/test --mirror https://example.com/archlinux search vim
+chisel -c myconfig.json --base-dir /tmp/test --mirror https://example.com/archlinux search vim
 ```
 
 **Available global flags:**
 - `-c, --config <path>` - Path to configuration file
-- `--base-dir <path>` - Base directory for all packmgr data (overrides config)
+- `--base-dir <path>` - Base directory for all chisel data (overrides config)
 - `--mirror <url>` - Arch mirror URL (overrides config)
 
 ### 2. Environment Variables
@@ -43,26 +43,26 @@ Set configuration via environment variables:
 
 ```bash
 # Set custom config file path
-export PACKMGR_CONFIG=/home/user/.packmgr.json
-packmgr sync
+export CHISEL_CONFIG=/home/user/.chisel.json
+chisel sync
 
 # Set custom base directory
-export PACKMGR_BASE_DIR=/opt/packmgr
-packmgr sync
+export CHISEL_BASE_DIR=/opt/chisel
+chisel sync
 
 # Use for single command
-PACKMGR_BASE_DIR=/tmp/test packmgr sync --status
+CHISEL_BASE_DIR=/tmp/test chisel sync --status
 ```
 
 **Available environment variables:**
-- `PACKMGR_CONFIG` - Path to configuration file
-- `PACKMGR_BASE_DIR` - Base directory for packmgr data
+- `CHISEL_CONFIG` - Path to configuration file
+- `CHISEL_BASE_DIR` - Base directory for chisel data
 
 ### 3. Configuration File
 
 Create a JSON configuration file with your settings.
 
-**Default location:** `/etc/packmgr/config.json`
+**Default location:** `/etc/chisel/config.json`
 
 **Example configuration:**
 
@@ -86,8 +86,8 @@ Create a JSON configuration file with your settings.
 
 #### `base_dir` (string)
 - **Default:** `/kod`
-- **Description:** Base directory for all packmgr data
-- **Example:** `/kod`, `/opt/packmgr`, `/home/user/.local/packmgr`
+- **Description:** Base directory for all chisel data
+- **Example:** `/kod`, `/opt/chisel`, `/home/user/.local/chisel`
 
 When you set `base_dir`, all the following paths are automatically derived:
 - Store: `{base_dir}/store`
@@ -199,7 +199,7 @@ For local development or testing without requiring root access:
 
 ```json
 {
-  "base_dir": "/home/user/.local/packmgr",
+  "base_dir": "/home/user/.local/chisel",
   "symlink_root": "/home/user/.local",
   "mirror_url": "https://mirrors.kernel.org/archlinux",
   "repositories": ["core", "extra"],
@@ -209,8 +209,8 @@ For local development or testing without requiring root access:
 
 **Usage:**
 ```bash
-packmgr -c ~/.packmgr-dev.json sync
-packmgr -c ~/.packmgr-dev.json install vim
+chisel -c ~/.chisel-dev.json sync
+chisel -c ~/.chisel-dev.json install vim
 ```
 
 ### Production Setup
@@ -233,8 +233,8 @@ System-wide installation with default paths:
 
 **Usage:**
 ```bash
-sudo packmgr sync
-sudo packmgr install vim
+sudo chisel sync
+sudo chisel install vim
 ```
 
 ### Temporary Testing
@@ -243,11 +243,11 @@ Quick testing without creating a config file:
 
 ```bash
 # Test in temporary directory
-packmgr --base-dir /tmp/packmgr-test sync
-packmgr --base-dir /tmp/packmgr-test search vim
+chisel --base-dir /tmp/chisel-test sync
+chisel --base-dir /tmp/chisel-test search vim
 
 # Test with different mirror
-packmgr --base-dir /tmp/test --mirror https://mirror.f4st.host/archlinux sync
+chisel --base-dir /tmp/test --mirror https://mirror.f4st.host/archlinux sync
 ```
 
 ### Environment-Based Configuration
@@ -256,31 +256,31 @@ Use environment variables for containerized environments:
 
 ```bash
 # In Docker/container
-export PACKMGR_BASE_DIR=/opt/packmgr
-export PACKMGR_CONFIG=/etc/packmgr/prod.json
+export CHISEL_BASE_DIR=/opt/chisel
+export CHISEL_CONFIG=/etc/chisel/prod.json
 
-packmgr sync
-packmgr install package-name
+chisel sync
+chisel install package-name
 ```
 
 ## Configuration File Locations
 
-Packmgr looks for configuration in the following locations (in order):
+Chisel looks for configuration in the following locations (in order):
 
 1. Path specified with `-c` or `--config` flag
-2. Path in `PACKMGR_CONFIG` environment variable
-3. `/etc/packmgr/config.json` (default)
+2. Path in `CHISEL_CONFIG` environment variable
+3. `/etc/chisel/config.json` (default)
 4. Built-in defaults (if no config file exists)
 
 ## Creating a Configuration File
 
 ### Method 1: Manual Creation
 
-Create `/etc/packmgr/config.json`:
+Create `/etc/chisel/config.json`:
 
 ```bash
-sudo mkdir -p /etc/packmgr
-sudo nano /etc/packmgr/config.json
+sudo mkdir -p /etc/chisel
+sudo nano /etc/chisel/config.json
 ```
 
 Paste your JSON configuration and save.
@@ -291,8 +291,8 @@ Generate a config file with default values:
 
 ```go
 // Future feature - config generation command
-packmgr config init
-packmgr config init --output /home/user/.packmgr.json
+chisel config init
+chisel config init --output /home/user/.chisel.json
 ```
 
 (Note: This feature is planned for a future release)
@@ -305,7 +305,7 @@ Use Go code to generate a config:
 package main
 
 import (
-	"github.com/yourusername/packmgr-go/pkg/config"
+	"github.com/yourusername/chisel-go/pkg/config"
 )
 
 func main() {
@@ -313,7 +313,7 @@ func main() {
 	cfg.MirrorURL = "https://mirrors.kernel.org/archlinux"
 	cfg.Repositories = []string{"core", "extra", "multilib"}
 	
-	if err := cfg.Save("/etc/packmgr/config.json"); err != nil {
+	if err := cfg.Save("/etc/chisel/config.json"); err != nil {
 		panic(err)
 	}
 }
@@ -321,14 +321,14 @@ func main() {
 
 ## Validation
 
-Packmgr automatically validates configuration on load:
+Chisel automatically validates configuration on load:
 
 - Sets defaults for missing fields
 - Ensures all paths are properly derived from `base_dir`
 - Validates repository names
 - Checks numeric ranges
 
-If configuration is invalid, packmgr will:
+If configuration is invalid, chisel will:
 1. Print an error message
 2. Fall back to built-in defaults
 3. Continue execution (graceful degradation)
@@ -348,8 +348,8 @@ If configuration is invalid, packmgr will:
 
 Check if config file exists and is valid JSON:
 ```bash
-cat /etc/packmgr/config.json
-python -m json.tool /etc/packmgr/config.json
+cat /etc/chisel/config.json
+python -m json.tool /etc/chisel/config.json
 ```
 
 ### Override not working
@@ -361,14 +361,14 @@ Remember priority order:
 
 ### Permission denied
 
-If using `/kod` or `/etc/packmgr`, you need root access:
+If using `/kod` or `/etc/chisel`, you need root access:
 ```bash
-sudo packmgr sync
+sudo chisel sync
 ```
 
 Or use a user-writable location:
 ```bash
-packmgr --base-dir ~/.local/packmgr sync
+chisel --base-dir ~/.local/chisel sync
 ```
 
 ## See Also
