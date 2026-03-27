@@ -19,10 +19,6 @@ jobs:
       matrix:
         os: [linux]
         arch: [amd64, arm64]
-        exclude:
-          # darwin doesn't support 386
-          - os: darwin
-            arch: arm
 
     steps:
       - name: Checkout code
