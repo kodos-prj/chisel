@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -180,9 +181,9 @@ func TestDownloadPackageAtomicWrite(t *testing.T) {
 func TestDownloadPackages(t *testing.T) {
 	cacheDir := t.TempDir()
 
-	downloadCount := 0
+	downloadCount := int64(0)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		downloadCount++
+		atomic.AddInt64(&downloadCount, 1)
 		fmt.Fprintf(w, "content for %s", r.URL.Path)
 	}))
 	defer server.Close()
