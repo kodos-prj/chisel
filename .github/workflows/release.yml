@@ -22,9 +22,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
+        uses: actions/checkout@v4
 
       - name: Set up Go
         uses: actions/setup-go@v6
@@ -53,6 +51,8 @@ jobs:
           GOARCH: ${{ matrix.arch }}
           CGO_ENABLED: 1
         run: |
+          pwd
+          ls -la cmd/
           mkdir -p build
           OUTPUT_NAME="chisel-${{ steps.version.outputs.version }}-${{ matrix.os }}-${{ matrix.arch }}"
           if [ "${{ matrix.os }}" = "windows" ]; then
