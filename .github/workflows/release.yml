@@ -18,6 +18,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
+        with:
+          path: source
 
       - name: Set up Go
         uses: actions/setup-go@v6
@@ -44,6 +46,7 @@ jobs:
           GOOS: linux
           GOARCH: amd64
           CGO_ENABLED: 1
+        working-directory: source
         run: |
           mkdir -p build
           OUTPUT_NAME="chisel-${{ steps.version.outputs.version }}-linux-amd64"
@@ -53,7 +56,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: chisel-${{ steps.version.outputs.version }}-linux-amd64
-          path: build/
+          path: source/build/
           retention-days: 30
 
   create-release:
