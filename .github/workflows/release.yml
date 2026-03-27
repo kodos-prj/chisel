@@ -63,7 +63,7 @@ jobs:
           go build -ldflags="-s -w" -o "build/${OUTPUT_NAME}" ./cmd/chisel
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: chisel-${{ steps.version.outputs.version }}-${{ matrix.os }}-${{ matrix.arch }}
           path: build/
