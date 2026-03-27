@@ -22,9 +22,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          path: repo
+        uses: actions/checkout@v6
 
       - name: Set up Go
         uses: actions/setup-go@v6
@@ -52,10 +50,7 @@ jobs:
           GOOS: ${{ matrix.os }}
           GOARCH: ${{ matrix.arch }}
           CGO_ENABLED: 1
-        working-directory: repo
         run: |
-          pwd
-          ls -la cmd/
           mkdir -p build
           OUTPUT_NAME="chisel-${{ steps.version.outputs.version }}-${{ matrix.os }}-${{ matrix.arch }}"
           if [ "${{ matrix.os }}" = "windows" ]; then
@@ -67,7 +62,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: chisel-${{ steps.version.outputs.version }}-${{ matrix.os }}-${{ matrix.arch }}
-          path: repo/build/
+          path: build/
           retention-days: 30
 
   create-release:
