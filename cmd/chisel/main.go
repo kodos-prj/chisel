@@ -1,0 +1,342 @@
+package main
+
+import (
+	"flag"
+	"fmt"
+	"os"
+
+	"github.com/kodos-prj/chisel/internal/cli"
+	"github.com/kodos-prj/chisel/pkg/config"
+)
+
+const version = "0.1.0-dev"
+
+var (
+	configPath string
+	baseDir    string
+	mirrorURL  string
+	symlinkDir string
+)
+
+func main() {
+	// Define global flags
+	flag.StringVar(&configPath, "config", "", "Path to configuration file")
+	flag.StringVar(&configPath, "c", "", "Path to configuration file (shorthand)")
+	flag.StringVar(&baseDir, "base-dir", "", "Base directory for chisel data (overrides config)")
+	flag.StringVar(&mirrorURL, "mirror", "", "Arch mirror URL (overrides config)")
+	flag.StringVar(&symlinkDir, "symlink-dir", "", "Directory to create symlink hierarchy (optional)")
+
+	// Parse flags before checking commands
+	flag.Parse()
+
+	args := flag.Args()
+	if len(args) < 1 {
+		showUsage()
+		os.Exit(1)
+	}
+
+	command := args[0]
+
+	switch command {
+	case "version":
+		fmt.Printf("chisel version %s\n", version)
+		return
+
+	case "sync":
+		handleSync(args[1:])
+
+	case "search":
+		handleSearch(args[1:])
+
+	case "info":
+		handleInfo(args[1:])
+
+	case "download":
+		handleDownload(args[1:])
+
+	case "extract":
+		handleExtract(args[1:])
+
+	case "install":
+		handleInstall(args[1:])
+
+	case "remove":
+		handleRemove(args[1:])
+
+	case "upgrade":
+		fmt.Println("Upgrade command not yet implemented")
+		fmt.Println("This feature is coming in Phase 5 of development")
+		os.Exit(1)
+
+	case "query":
+		fmt.Println("Query command not yet implemented")
+		fmt.Println("This feature is coming in Phase 5 of development")
+		os.Exit(1)
+
+	case "cleanup":
+		fmt.Println("Cleanup command not yet implemented")
+		fmt.Println("This feature is coming in Phase 6 of development")
+		os.Exit(1)
+
+	case "help", "--help", "-h":
+		showUsage()
+
+	default:
+		fmt.Printf("Unknown command: %s\n", command)
+		showUsage()
+		os.Exit(1)
+	}
+}
+
+func showUsage() {
+	fmt.Println("chisel - Cross-Distribution Package Manager")
+	fmt.Println("Brings Arch Linux packages to any Linux distribution")
+	fmt.Println("")
+	fmt.Println("Usage: chisel [global-options] <command> [options]")
+	fmt.Println("")
+	fmt.Println("Global Options:")
+	fmt.Println("  -c, --config <path>   Path to configuration file (default: /etc/chisel/config.json)")
+	fmt.Println("  --base-dir <path>     Base directory for chisel data (default: /kod)")
+	fmt.Println("  --mirror <url>        Arch mirror URL (overrides config)")
+	fmt.Println("")
+	fmt.Println("Available Commands (Phase 1):")
+	fmt.Println("  sync              Sync package databases from Arch mirrors")
+	fmt.Println("  sync --status     Show database sync status")
+	fmt.Println("  search <pattern>  Search for packages")
+	fmt.Println("  info <package>    Show detailed package information")
+	fmt.Println("  info --deps <pkg> Show package info with dependency tree")
+	fmt.Println("")
+	fmt.Println("Available Commands (Phase 2):")
+	fmt.Println("  download <pkg>    Download packages from Arch mirrors")
+	fmt.Println("  extract <file>    Extract packages to the store")
+	fmt.Println("")
+	fmt.Println("Available Commands (Phase 3):")
+	fmt.Println("  install <pkg>     Install a package (with dependencies, symlinks, wrappers)")
+	fmt.Println("")
+	fmt.Println("Coming Soon:")
+	fmt.Println("  remove <pkg>      Remove a package")
+	fmt.Println("  upgrade           Upgrade all packages")
+	fmt.Println("  query             List installed packages")
+	fmt.Println("  cleanup           Remove old package versions")
+	fmt.Println("")
+	fmt.Println("Other:")
+	fmt.Println("  version           Show version information")
+	fmt.Println("  help              Show this help message")
+	fmt.Println("")
+	fmt.Println("Examples:")
+	fmt.Println("  # Use custom config file")
+	fmt.Println("  chisel -c /home/user/.chisel.json sync")
+	fmt.Println("")
+	fmt.Println("  # Use custom base directory for testing")
+	fmt.Println("  chisel --base-dir /tmp/chisel-test sync")
+	fmt.Println("")
+	fmt.Println("  # Use different mirror")
+	fmt.Println("  chisel --mirror https://mirrors.kernel.org/archlinux sync")
+	fmt.Println("")
+	fmt.Println("  # Combine options")
+	fmt.Println("  chisel -c myconfig.json --base-dir /tmp/test search vim")
+	fmt.Println("")
+	fmt.Println("Configuration: /etc/chisel/config.json (or specify with --config)")
+	fmt.Println("Environment variables: CHISEL_CONFIG, CHISEL_BASE_DIR")
+	fmt.Println("See documentation at: https://github.com/kodos-prj/chisel")
+}
+
+func loadConfig() *config.Config {
+	// Priority order:
+	// 1. Command line flags (--config, --base-dir, --mirror, --generation)
+	// 2. Environment variables (CHISEL_CONFIG, CHISEL_BASE_DIR, CHISEL_GENERATION)
+	// 3. Default config file (/etc/chisel/config.json)
+	// 4. Built-in defaults
+
+	// Determine config path
+	cfgPath := configPath
+	if cfgPath == "" {
+		// Check environment variable
+		if envConfig := os.Getenv("CHISEL_CONFIG"); envConfig != "" {
+			cfgPath = envConfig
+		} else {
+			cfgPath = config.DefaultConfigPath
+		}
+	}
+
+	// Load config from file (or use defaults if file doesn't exist)
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		// If there's an error loading, use defaults
+		cfg = config.DefaultConfig()
+	}
+	cfg.Normalize()
+
+	// Apply command-line overrides
+	if baseDir != "" {
+		cfg.BaseDir = baseDir
+		// Update all derived paths to use the new base directory
+		cfg.UpdateDerivedPaths()
+	} else if envBaseDir := os.Getenv("CHISEL_BASE_DIR"); envBaseDir != "" {
+		cfg.BaseDir = envBaseDir
+		cfg.UpdateDerivedPaths()
+	}
+
+	if mirrorURL != "" {
+		cfg.MirrorURL = mirrorURL
+	}
+
+	// Handle symlink directory from environment variable if not set via flag
+	if symlinkDir == "" {
+		if envSymlink := os.Getenv("CHISEL_SYMLINK_DIR"); envSymlink != "" {
+			symlinkDir = envSymlink
+		}
+	}
+
+	return cfg
+}
+
+func handleSync(args []string) {
+	cfg := loadConfig()
+
+	// Check for --status flag
+	if len(args) > 0 && args[0] == "--status" {
+		cmd := cli.NewSyncCommand(cfg)
+		if err := cmd.ShowStatus(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	// Check for --force flag
+	force := false
+	if len(args) > 0 && args[0] == "--force" {
+		force = true
+	}
+
+	cmd := cli.NewSyncCommand(cfg)
+	var err error
+	if force {
+		err = cmd.ExecuteWithForce()
+	} else {
+		err = cmd.Execute()
+	}
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func handleSearch(args []string) {
+	if len(args) < 1 {
+		fmt.Fprintln(os.Stderr, "Error: search pattern required")
+		fmt.Fprintln(os.Stderr, "Usage: chisel search <pattern>")
+		os.Exit(1)
+	}
+
+	cfg := loadConfig()
+	pattern := args[0]
+
+	cmd := cli.NewSearchCommand(cfg)
+	if err := cmd.Execute(pattern); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func handleInfo(args []string) {
+	if len(args) < 1 {
+		fmt.Fprintln(os.Stderr, "Error: package name required")
+		fmt.Fprintln(os.Stderr, "Usage: chisel info <package>")
+		fmt.Fprintln(os.Stderr, "       chisel info --deps <package>")
+		os.Exit(1)
+	}
+
+	cfg := loadConfig()
+
+	// Check for --deps flag
+	if args[0] == "--deps" {
+		if len(args) < 2 {
+			fmt.Fprintln(os.Stderr, "Error: package name required after --deps")
+			os.Exit(1)
+		}
+		packageName := args[1]
+		cmd := cli.NewInfoCommand(cfg)
+		if err := cmd.ExecuteWithDeps(packageName); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	packageName := args[0]
+	cmd := cli.NewInfoCommand(cfg)
+	if err := cmd.Execute(packageName); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func handleDownload(args []string) {
+	if len(args) < 1 {
+		fmt.Fprintln(os.Stderr, "Error: package name required")
+		fmt.Fprintln(os.Stderr, "Usage: chisel download <package> [package2] ...")
+		os.Exit(1)
+	}
+
+	cfg := loadConfig()
+	cmd := cli.NewDownloadCommand(cfg)
+	if err := cmd.Run(args); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func handleExtract(args []string) {
+	if len(args) < 1 {
+		fmt.Fprintln(os.Stderr, "Error: package file path required")
+		fmt.Fprintln(os.Stderr, "Usage: chisel extract <package.pkg.tar.zst> [package2.pkg.tar.zst] ...")
+		os.Exit(1)
+	}
+
+	cfg := loadConfig()
+	cmd := cli.NewExtractCommand(cfg)
+	if err := cmd.Run(args); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func handleInstall(args []string) {
+	if len(args) < 1 {
+		fmt.Fprintln(os.Stderr, "Error: package name required")
+		fmt.Fprintln(os.Stderr, "Usage: chisel install [options] <package> [package2] ...")
+		fmt.Fprintln(os.Stderr, "Options:")
+		fmt.Fprintln(os.Stderr, "  --no-deps      Skip dependency resolution")
+		fmt.Fprintln(os.Stderr, "  --no-extract   Skip extraction (assume already in store)")
+		fmt.Fprintln(os.Stderr, "  --no-symlink   Skip symlink creation")
+		fmt.Fprintln(os.Stderr, "  --force        Force overwrite of existing symlinks")
+		os.Exit(1)
+	}
+
+	cfg := loadConfig()
+	cmd := cli.NewInstallCommandWithSymlinkDir(cfg, symlinkDir)
+	if err := cmd.Run(args); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func handleRemove(args []string) {
+	if len(args) < 1 {
+		fmt.Fprintln(os.Stderr, "Error: package name required")
+		fmt.Fprintln(os.Stderr, "Usage: chisel remove [options] <package> [package2] ...")
+		fmt.Fprintln(os.Stderr, "Options:")
+		fmt.Fprintln(os.Stderr, "  --force  Force removal even if symlinks don't exist")
+		os.Exit(1)
+	}
+
+	cfg := loadConfig()
+	cmd := cli.NewRemoveCommandWithSymlinkDir(cfg, symlinkDir)
+	if err := cmd.Run(args); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+}

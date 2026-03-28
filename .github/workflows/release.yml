@@ -13,23 +13,16 @@ on:
 jobs:
   build:
     name: Build Release
-    runs-on: ubuntu-latest
+    runs-on: archlinux-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
-        with:
-          path: source
 
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
           go-version: "1.25"
-
-      - name: Install libalpm (Linux only)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libalpm-dev
 
       - name: Get version
         id: version
@@ -46,17 +39,17 @@ jobs:
           GOOS: linux
           GOARCH: amd64
           CGO_ENABLED: 1
-        working-directory: source
         run: |
+          go mod download
           mkdir -p build
           OUTPUT_NAME="chisel-${{ steps.version.outputs.version }}-linux-amd64"
-          go build -ldflags="-s -w" -o "build/${OUTPUT_NAME}" ./cmd/chisel
+          go build -ldflags="-s -w" -o "./build/${OUTPUT_NAME}" ./cmd/chisel
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: chisel-${{ steps.version.outputs.version }}-linux-amd64
-          path: source/build/
+          path: build/
           retention-days: 30
 
   create-release:
