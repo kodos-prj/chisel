@@ -1,0 +1,126 @@
+#!/bin/bash
+#
+# Chisel Wrapper Script (chisel-user)
+# Handles user-level chisel operations transparently
+#
+# This wrapper:
+# - Automatically uses user-level configuration if available
+# - Falls back to system configuration if needed
+# - Simplifies common operations for regular users
+#
+
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CHISEL_BIN="${SCRIPT_DIR}/chisel"
+
+# Determine user-level configuration
+XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
+XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
+CHISEL_USER_CONFIG="${XDG_CONFIG_HOME}/chisel/config.json"
+CHISEL_USER_BASE_DIR="${CHISEL_USER_BASE_DIR:-${XDG_DATA_HOME}/chisel}"
+
+# Helper function to check if user config exists
+has_user_config() {
+    [[ -f "$CHISEL_USER_CONFIG" ]] && [[ -d "$CHISEL_USER_BASE_DIR" ]]
+}
+
+# Helper function to show help for chisel-user
+show_help() {
+    echo "chisel-user - User-level package manager"
+    echo ""
+    echo "Usage: chisel-user [global-options] <command> [options]"
+    echo ""
+    echo "Global Options:"
+    echo "  --setup              Initialize user-level chisel environment"
+    echo "  --base-dir <path>    Override user base directory"
+    echo "  --config <path>      Override user config file"
+    echo ""
+    echo "Commands:"
+    echo "  sync                 Sync package databases"
+    echo "  search <pattern>     Search for packages"
+    echo "  info <package>       Show package information"
+    echo "  install <pkg>        Install a package"
+    echo "  list                 List installed packages"
+    echo "  remove <pkg>         Remove a package"
+    echo "  upgrade [pkg]        Upgrade packages"
+    echo "  cleanup              Remove old package versions"
+    echo "  cache                Manage package cache"
+    echo "  help                 Show this help message"
+    echo ""
+    echo "Examples:"
+    echo "  chisel-user --setup               # Initialize user environment"
+    echo "  chisel-user search vim             # Search for vim package"
+    echo "  chisel-user install nano          # Install nano package"
+    echo "  chisel-user list --verbose         # List all packages with details"
+    echo "  chisel-user upgrade               # Upgrade all packages"
+    echo "  chisel-user cleanup --dry-run     # Preview cleanup"
+    echo "  chisel-user cache --list          # Show cache contents"
+    echo ""
+}
+
+# Check prerequisites
+if [[ ! -x "$CHISEL_BIN" ]]; then
+    echo "Error: chisel binary not found at $CHISEL_BIN"
+    exit 1
+fi
+
+# Parse global options
+USER_BASE_DIR=""
+USER_CONFIG=""
+SETUP_MODE=false
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --setup)
+            SETUP_MODE=true
+            shift
+            ;;
+        --base-dir)
+            USER_BASE_DIR="$2"
+            shift 2
+            ;;
+        --config)
+            USER_CONFIG="$2"
+            shift 2
+            ;;
+        --help|-h)
+            show_help
+            exit 0
+            ;;
+        *)
+            break
+            ;;
+    esac
+done
+
+# Handle setup mode
+if [[ "$SETUP_MODE" == true ]]; then
+    # Run the setup script
+    SETUP_SCRIPT="${SCRIPT_DIR}/chisel-user-init.sh"
+    if [[ -x "$SETUP_SCRIPT" ]]; then
+        exec "$SETUP_SCRIPT" "$@"
+    else
+        echo "Error: Setup script not found at $SETUP_SCRIPT"
+        exit 1
+    fi
+fi
+
+# Prepare chisel arguments
+CHISEL_ARGS=()
+
+# Add user base directory if available or specified
+if [[ -n "$USER_BASE_DIR" ]]; then
+    CHISEL_ARGS+=(--base-dir "$USER_BASE_DIR")
+elif has_user_config; then
+    CHISEL_ARGS+=(--base-dir "$CHISEL_USER_BASE_DIR")
+fi
+
+# Add user config if available or specified
+if [[ -n "$USER_CONFIG" ]]; then
+    CHISEL_ARGS+=(--config "$USER_CONFIG")
+elif has_user_config; then
+    CHISEL_ARGS+=(--config "$CHISEL_USER_CONFIG")
+fi
+
+# Pass remaining arguments to chisel
+exec "$CHISEL_BIN" "${CHISEL_ARGS[@]}" "$@"

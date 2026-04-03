@@ -126,6 +126,86 @@ func Load(path string) (*Config, error) {
 	return &cfg, nil
 }
 
+// GetUserConfigPath returns the user-level config path following XDG spec.
+// Priority: $XDG_CONFIG_HOME/chisel/config.json -> ~/.config/chisel/config.json
+func GetUserConfigPath() (string, error) {
+	// Check XDG_CONFIG_HOME first
+	if xdgConfig := os.Getenv("XDG_CONFIG_HOME"); xdgConfig != "" {
+		return filepath.Join(xdgConfig, "chisel", "config.json"), nil
+	}
+
+	// Fall back to ~/.config/chisel/config.json
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("failed to determine home directory: %w", err)
+	}
+
+	return filepath.Join(homeDir, ".config", "chisel", "config.json"), nil
+}
+
+// GetUserBaseDir returns the user-level base directory for chisel data.
+// Priority: $CHISEL_USER_BASE_DIR -> ~/.local/share/chisel
+func GetUserBaseDir() (string, error) {
+	// Check environment variable first
+	if userBase := os.Getenv("CHISEL_USER_BASE_DIR"); userBase != "" {
+		return userBase, nil
+	}
+
+	// Check XDG_DATA_HOME
+	if xdgData := os.Getenv("XDG_DATA_HOME"); xdgData != "" {
+		return filepath.Join(xdgData, "chisel"), nil
+	}
+
+	// Fall back to ~/.local/share/chisel
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("failed to determine home directory: %w", err)
+	}
+
+	return filepath.Join(homeDir, ".local", "share", "chisel"), nil
+}
+
+// LoadUserConfig loads configuration with user-level support.
+// Tries user config first, then system config, then defaults.
+func LoadUserConfig() (*Config, error) {
+	// Try user config first
+	userConfigPath, err := GetUserConfigPath()
+	if err == nil {
+		if _, err := os.Stat(userConfigPath); err == nil {
+			// User config exists, load it
+			cfg, err := Load(userConfigPath)
+			if err != nil {
+				return nil, err
+			}
+			return cfg, nil
+		}
+	}
+
+	// Fall back to system config
+	return Load(DefaultConfigPath)
+}
+
+// DefaultUserConfig returns a configuration for user-level use.
+func DefaultUserConfig() (*Config, error) {
+	baseDir, err := GetUserBaseDir()
+	if err != nil {
+		return nil, err
+	}
+
+	cfg := DefaultConfig()
+	cfg.BaseDir = baseDir
+	cfg.UpdateDerivedPaths()
+
+	// For user-level, use home directory instead of system root for symlinks
+	homeDir, err := os.UserHomeDir()
+	if err == nil {
+		// Create a .local/bin for user symlinks
+		cfg.SymlinkRoot = filepath.Join(homeDir, ".local", "bin")
+	}
+
+	return cfg, nil
+}
+
 // Normalize ensures all config fields have valid values.
 // It sets defaults for any empty fields based on BaseDir.
 func (c *Config) Normalize() {
