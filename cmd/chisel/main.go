@@ -63,15 +63,11 @@ func main() {
 	case "remove":
 		handleRemove(args[1:])
 
-	case "upgrade":
-		fmt.Println("Upgrade command not yet implemented")
-		fmt.Println("This feature is coming in Phase 5 of development")
-		os.Exit(1)
+	case "list", "query":
+		handleList(args[1:])
 
-	case "query":
-		fmt.Println("Query command not yet implemented")
-		fmt.Println("This feature is coming in Phase 5 of development")
-		os.Exit(1)
+	case "upgrade":
+		handleUpgrade(args[1:])
 
 	case "cleanup":
 		fmt.Println("Cleanup command not yet implemented")
@@ -112,11 +108,16 @@ func showUsage() {
 	fmt.Println("")
 	fmt.Println("Available Commands (Phase 3):")
 	fmt.Println("  install <pkg>     Install a package (with dependencies, symlinks, wrappers)")
+	fmt.Println("  remove <pkg>      Remove a package")
+	fmt.Println("  list              List installed packages")
+	fmt.Println("  list --verbose    List packages with detailed information")
+	fmt.Println("")
+	fmt.Println("Available Commands (Phase 4):")
+	fmt.Println("  upgrade           Upgrade all packages")
+	fmt.Println("  upgrade <pkg>     Upgrade specific packages")
+	fmt.Println("  upgrade --dry-run Preview upgrades without making changes")
 	fmt.Println("")
 	fmt.Println("Coming Soon:")
-	fmt.Println("  remove <pkg>      Remove a package")
-	fmt.Println("  upgrade           Upgrade all packages")
-	fmt.Println("  query             List installed packages")
 	fmt.Println("  cleanup           Remove old package versions")
 	fmt.Println("")
 	fmt.Println("Other:")
@@ -337,6 +338,60 @@ func handleRemove(args []string) {
 	cmd := cli.NewRemoveCommandWithSymlinkDir(cfg, symlinkDir)
 	if err := cmd.Run(args); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func handleList(args []string) {
+	// Check for --verbose flag
+	verbose := false
+	if len(args) > 0 && (args[0] == "--verbose" || args[0] == "-v") {
+		verbose = true
+	}
+
+	cfg := loadConfig()
+	cmd := cli.NewListCommand(cfg)
+	if err := cmd.Execute(verbose); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func handleUpgrade(args []string) {
+	cfg := loadConfig()
+
+	// Parse upgrade-specific flags
+	dryRun := false
+	verbose := false
+	var packages []string
+
+	for _, arg := range args {
+		switch arg {
+		case "--dry-run":
+			dryRun = true
+		case "--verbose", "-v":
+			verbose = true
+		default:
+			// Treat as package name
+			packages = append(packages, arg)
+		}
+	}
+
+	// Create upgrade command and execute
+	cmd := cli.NewUpgradeCommandWithSymlinkDir(cfg, symlinkDir)
+	summary, err := cmd.Execute(&cli.UpgradeOptions{
+		DryRun:   dryRun,
+		Verbose:  verbose,
+		Packages: packages,
+	})
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	// If summary indicates failures, exit with error code
+	if summary != nil && summary.Failed > 0 {
 		os.Exit(1)
 	}
 }
