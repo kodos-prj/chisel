@@ -41,9 +41,69 @@ sudo ./chisel install vim
 
 # Run tests
 go test ./...
+
+# Test complete workflow with automated script
+./test-workflow.sh --dry-run
 ```
 
-## Key Concepts
+### Workflow Testing
+
+A complete workflow test script is provided to validate chisel operations:
+
+```bash
+# Safe dry-run (no actual installation)
+./test-workflow.sh --dry-run
+
+# Full workflow test (requires sudo)
+sudo ./test-workflow.sh
+
+# Test with a different package
+./test-workflow.sh --package vim --dry-run
+```
+
+See [TEST-WORKFLOW.md](TEST-WORKFLOW.md) for detailed documentation.
+
+## User-Level Package Management
+
+Want to install packages **without sudo**? Chisel supports user-level package management!
+
+```bash
+# One-time setup (creates ~/.local/share/chisel and ~/.config/chisel)
+./chisel-user-init.sh
+
+# Reload your shell
+source ~/.bashrc
+
+# Now install packages without sudo!
+chisel-user install vim
+chisel-user install nano
+chisel-user list
+chisel-user upgrade
+chisel-user cleanup
+```
+
+**Key Benefits:**
+- ✅ No sudo required
+- ✅ Packages in `~/.local/share/chisel/`
+- ✅ Executables in `~/.local/bin/`
+- ✅ Per-user isolation
+- ✅ Follows XDG directory standards
+- ✅ Easy setup and cleanup
+
+See [USER-GUIDE.md](USER-GUIDE.md) for detailed documentation.
+
+## Comparison: System vs User-Level
+
+| Feature | System (sudo) | User-Level |
+|---------|--------------|-----------|
+| Installation | `sudo chisel install vim` | `chisel-user install vim` |
+| Location | `/kod/` (global) | `~/.local/share/chisel/` (per-user) |
+| Permissions | Root required | No sudo needed |
+| Isolation | Shared across users | Per-user |
+| Usage | Server/CI environments | Development, personal use |
+| Setup | Direct use | `chisel-user-init.sh` once |
+
+
 
 ### What is Chisel?
 A **cross-distribution package manager** that:
