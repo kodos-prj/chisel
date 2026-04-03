@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
 
 	"github.com/kodos-prj/chisel/internal/cli"
 	"github.com/kodos-prj/chisel/pkg/config"
@@ -70,9 +71,10 @@ func main() {
 		handleUpgrade(args[1:])
 
 	case "cleanup":
-		fmt.Println("Cleanup command not yet implemented")
-		fmt.Println("This feature is coming in Phase 6 of development")
-		os.Exit(1)
+		handleCleanup(args[1:])
+
+	case "cache":
+		handleCache(args[1:])
 
 	case "help", "--help", "-h":
 		showUsage()
@@ -117,8 +119,12 @@ func showUsage() {
 	fmt.Println("  upgrade <pkg>     Upgrade specific packages")
 	fmt.Println("  upgrade --dry-run Preview upgrades without making changes")
 	fmt.Println("")
-	fmt.Println("Coming Soon:")
+	fmt.Println("Available Commands (Phase 5):")
 	fmt.Println("  cleanup           Remove old package versions")
+	fmt.Println("  cleanup --dry-run Preview cleanup without making changes")
+	fmt.Println("  cleanup --force   Remove versions without confirmation")
+	fmt.Println("  cache-clean       Clean downloaded package cache")
+	fmt.Println("  cache-clean --list Show cache contents without removing")
 	fmt.Println("")
 	fmt.Println("Other:")
 	fmt.Println("  version           Show version information")
@@ -392,6 +398,100 @@ func handleUpgrade(args []string) {
 
 	// If summary indicates failures, exit with error code
 	if summary != nil && summary.Failed > 0 {
+		os.Exit(1)
+	}
+}
+
+func handleCleanup(args []string) {
+	cfg := loadConfig()
+
+	// Parse cleanup-specific flags
+	dryRun := false
+	verbose := false
+	force := false
+	keepVersions := -1
+
+	for i, arg := range args {
+		switch arg {
+		case "--dry-run":
+			dryRun = true
+		case "--verbose", "-v":
+			verbose = true
+		case "--force":
+			force = true
+		case "--keep":
+			if i+1 < len(args) {
+				// Parse next argument as keep count
+				if v, err := strconv.Atoi(args[i+1]); err == nil {
+					keepVersions = v
+				}
+			}
+		}
+	}
+
+	// Create cleanup command and execute
+	cmd := cli.NewCleanupCommandWithSymlinkDir(cfg, symlinkDir)
+	summary, err := cmd.Execute(&cli.CleanupOptions{
+		DryRun:       dryRun,
+		Verbose:      verbose,
+		Force:        force,
+		KeepVersions: keepVersions,
+	})
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	// If summary indicates issues, exit with appropriate code
+	if summary != nil && summary.VersionsSkipped > 0 && !dryRun {
+		// Print detailed info when there are skipped versions
+		if verbose {
+			fmt.Printf("\nNote: %d versions were skipped (still in use)\n", summary.VersionsSkipped)
+		}
+	}
+}
+
+func handleCache(args []string) {
+	cfg := loadConfig()
+
+	// Parse cache-specific flags
+	verbose := false
+	force := false
+	dryRun := false
+	action := "clean"
+
+	for _, arg := range args {
+		switch arg {
+		case "--list":
+			action = "list"
+		case "--verbose", "-v":
+			verbose = true
+		case "--force":
+			force = true
+		case "--dry-run":
+			dryRun = true
+		case "--prune":
+			action = "prune"
+		}
+	}
+
+	// Create cache command and execute
+	cmd := cli.NewCacheCommand(cfg)
+	summary, err := cmd.Execute(&cli.CacheOptions{
+		Action:  action,
+		DryRun:  dryRun,
+		Verbose: verbose,
+		Force:   force,
+	})
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	// If summary indicates errors, exit with error code
+	if summary != nil && summary.FilesWithError > 0 {
 		os.Exit(1)
 	}
 }
