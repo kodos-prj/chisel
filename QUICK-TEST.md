@@ -24,6 +24,8 @@ sudo ./test-workflow.sh --package vim
 | List packages | ✅ Works | <1s |
 | Upgrade packages | ✅ Works | ~30-60s |
 | Remove package | ✅ Works | <5s |
+| Cleanup old versions | ✅ Works | <5s |
+| Cache clean | ✅ Works | <5s |
 
 ## Quick Examples
 
@@ -50,6 +52,16 @@ sudo ./test-workflow.sh --skip-cleanup
 
 ## Expected Output
 
+```
+✓ Database synchronization       [~20 seconds]
+✓ Package search                 [<1 second]
+✓ Package information retrieval  [<1 second]
+✓ Package installation           [~30 seconds]
+✓ Package listing                [<1 second]
+✓ Package upgrade                [~30-60 seconds]
+✓ Package removal                [<5 seconds]
+✓ Cleanup old versions           [<5 seconds]
+✓ Cache cleanup                  [<5 seconds]
 ```
 ✓ Database synchronization       [~20 seconds]
 ✓ Package search                 [<1 second]

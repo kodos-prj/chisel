@@ -12,6 +12,8 @@ The script exercises the following operations in sequence:
 5. **List** - List installed packages
 6. **Upgrade** - Check for package updates
 7. **Remove** - Remove installed packages
+8. **Cleanup** - Remove old package versions from store
+9. **Cache Clean** - Clean downloaded package cache
 
 ## Usage
 
@@ -49,9 +51,8 @@ sudo ./test-workflow.sh
 - **Package List**: Lists all installed packages with version and file count
 - **Package Upgrade**: Checks for and installs package updates (including dependency resolution)
 - **Package Remove**: Removes packages and cleans up symlinks/wrappers
-
-### ⚠️ Not Yet Implemented
-None - all major features are now implemented!
+- **Cleanup**: Removes old package versions from store (keeps N recent versions)
+- **Cache Clean**: Cleans downloaded package cache
 
 ## Example Output
 
@@ -157,6 +158,41 @@ Keep test files for inspection:
 sudo ./test-workflow.sh --skip-cleanup
 # Inspect /tmp/chisel-test-*/
 ```
+
+## Phase 5: Cleanup and Cache Management
+
+The test workflow also validates Phase 5 functionality:
+
+### Step 8: Cleanup Old Versions
+After install/upgrade operations, the workflow tests the cleanup command:
+```bash
+chisel cleanup --verbose --dry-run
+```
+
+This validates:
+- Identifying old package versions
+- Checking for active symlinks/wrappers
+- Calculating space that will be freed
+- Dry-run mode (preview without making changes)
+
+### Step 9: Cache Cleanup
+The workflow tests the cache management command:
+```bash
+chisel cache --list
+chisel cache --dry-run
+```
+
+This validates:
+- Listing cached package files
+- Calculating total cache size
+- Preview mode for cache cleaning
+- Safe removal of downloaded packages
+
+Both operations include:
+- Confirmation prompts (skipped with --force)
+- Verbose output for debugging
+- Dry-run mode for safe preview
+- Space tracking and reporting
 
 ## Exit Codes
 
