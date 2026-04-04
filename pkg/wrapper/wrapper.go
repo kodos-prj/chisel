@@ -72,9 +72,62 @@ func (g *Generator) DiscoverLibraries(pkgName, version string) (map[string][]str
 	return libraries, err
 }
 
+// shouldIncludeInLD_LIBRARY_PATH determines if a dependency's libraries should be added to LD_LIBRARY_PATH.
+// Uses a whitelist of essential C/C++ runtime libraries and excludes scripting runtimes
+// that cause path pollution issues when combined with other applications.
+func shouldIncludeInLD_LIBRARY_PATH(pkgName string) bool {
+	// Packages whose libraries should NOT be included in LD_LIBRARY_PATH
+	// Focus on scripting language runtimes and dev tools that cause conflicts
+	excludedPackages := map[string]bool{
+		// Scripting language runtimes - their lib directories conflict with app expectations
+		"python":       true,
+		"python2":      true,
+		"python3":      true,
+		"ruby":         true,
+		"perl":         true,
+		"php":          true,
+		"nodejs":       true,
+		"lua":          true,
+		"guile":        true,
+		"tcl":          true,
+		"java-runtime": true,
+		"jre":          true,
+		"jdk":          true,
+
+		// Development tools and compilers - not needed at runtime
+		"gcc":      true,
+		"clang":    true,
+		"binutils": true,
+		"gdb":      true,
+		"lldb":     true,
+
+		// Build systems - not needed at runtime
+		"cmake":      true,
+		"meson":      true,
+		"ninja":      true,
+		"autoconf":   true,
+		"automake":   true,
+		"libtool":    true,
+		"pkg-config": true,
+
+		// Terminfo and shell integration (these are data files, not libraries)
+		"kitty-terminfo":          true,
+		"kitty-shell-integration": true,
+	}
+
+	return !excludedPackages[pkgName]
+}
+
 // GenerateWrapper creates a wrapper script for a command that uses isolated libraries.
-// The wrapper sets LD_LIBRARY_PATH to point to the package's lib directories.
+// The wrapper sets LD_LIBRARY_PATH to point to the package's lib directories and all dependency lib directories.
 func (g *Generator) GenerateWrapper(cmdName, pkgName, version string, libDirs []string) error {
+	return g.GenerateWrapperWithDeps(cmdName, pkgName, version, libDirs, nil, nil)
+}
+
+// GenerateWrapperWithDeps creates a wrapper script for a command with dependency library paths.
+// depPkgs is a list of dependency package names, depVersions maps package names to versions.
+// Dependencies that are known to cause conflicts are excluded (e.g., Python, Ruby, dev tools).
+func (g *Generator) GenerateWrapperWithDeps(cmdName, pkgName, version string, libDirs []string, depPkgs []string, depVersions map[string]string) error {
 	// Create wrapper directory if it doesn't exist
 	if err := os.MkdirAll(g.wrapperRoot, 0755); err != nil {
 		return fmt.Errorf("failed to create wrapper directory: %w", err)
@@ -84,10 +137,35 @@ func (g *Generator) GenerateWrapper(cmdName, pkgName, version string, libDirs []
 
 	// Build LD_LIBRARY_PATH
 	var ldLibraryPath []string
+
+	// Add libraries from the main package first
 	for _, libDir := range libDirs {
 		// Convert to absolute path in store
 		absLibPath := filepath.Join(g.storeRoot, pkgName, version, libDir)
 		ldLibraryPath = append(ldLibraryPath, absLibPath)
+	}
+
+	// Add libraries from dependencies, but skip packages that cause conflicts
+	if depVersions != nil && len(depPkgs) > 0 {
+		for _, depName := range depPkgs {
+			// Skip packages known to cause conflicts
+			if !shouldIncludeInLD_LIBRARY_PATH(depName) {
+				continue
+			}
+
+			if depVersion, ok := depVersions[depName]; ok {
+				depLibDirs, err := g.DiscoverLibraries(depName, depVersion)
+				if err != nil {
+					// Log warning but continue with other dependencies
+					fmt.Fprintf(os.Stderr, "Warning: Failed to discover libraries for dependency %s: %v\n", depName, err)
+					continue
+				}
+				for dir := range depLibDirs {
+					absLibPath := filepath.Join(g.storeRoot, depName, depVersion, dir)
+					ldLibraryPath = append(ldLibraryPath, absLibPath)
+				}
+			}
+		}
 	}
 
 	// Build the wrapper script content

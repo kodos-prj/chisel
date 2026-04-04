@@ -91,7 +91,7 @@ func (i *InstallCommand) Run(args []string) error {
 
 	// Resolve package dependencies
 	fmt.Println("Resolving package dependencies...")
-	toInstall, err := i.resolveDependencies(client, pkgNames, opts.NoDeps)
+	toInstall, depMap, err := i.resolveDependenciesWithMap(client, pkgNames, opts.NoDeps)
 	if err != nil {
 		return fmt.Errorf("failed to resolve dependencies: %w", err)
 	}
@@ -134,7 +134,7 @@ func (i *InstallCommand) Run(args []string) error {
 			return fmt.Errorf("no packages were successfully downloaded")
 		}
 
-		fmt.Printf("✓ Downloaded %d package(s)\n", len(results))
+		fmt.Printf("✓ Downloaded %d/%d package(s)\n", len(results), len(toInstall))
 
 		// Extract packages
 		fmt.Println("\nExtracting packages...")
@@ -192,13 +192,21 @@ func (i *InstallCommand) Run(args []string) error {
 	}
 
 	// Create symlinks
-	if !opts.NoSymlink && i.symlinkDir != "" {
+	symlinkDir := i.symlinkDir
+	if symlinkDir == "" {
+		symlinkDir = i.config.SymlinkRoot
+	}
+
+	if !opts.NoSymlink && symlinkDir != "" {
 		fmt.Println("\nCreating symlinks...")
+
+		symlinkCount := 0
 
 		// Create symlink hierarchy pointing to storage and wrappers
 		for _, pkg := range toInstall {
 			pkgFileInfo, ok := extractedFilesMap[pkg.Name][pkg.Version]
 			if !ok || len(pkgFileInfo.AllFiles) == 0 {
+				fmt.Fprintf(os.Stderr, "  ! Skipping symlinks for %s (not extracted)\n", pkg.Name)
 				continue
 			}
 
@@ -218,7 +226,7 @@ func (i *InstallCommand) Run(args []string) error {
 					continue
 				}
 
-				symlinkPath := filepath.Join(i.symlinkDir, filePath)
+				symlinkPath := filepath.Join(symlinkDir, filePath)
 
 				// Create parent directories if needed
 				symlinkParentDir := filepath.Dir(symlinkPath)
@@ -271,16 +279,28 @@ func (i *InstallCommand) Run(args []string) error {
 				// Create symlink
 				if err := os.Symlink(targetPath, symlinkPath); err != nil {
 					fmt.Fprintf(os.Stderr, "  ! Warning: Failed to create symlink %s: %v\n", filePath, err)
+				} else {
+					symlinkCount++
 				}
 			}
 		}
 
-		fmt.Printf("✓ Created symlinks\n")
+		if symlinkCount > 0 {
+			fmt.Printf("✓ Created %d symlink(s)\n", symlinkCount)
+		} else {
+			fmt.Println("! No symlinks were created")
+		}
 	}
 
 	// Generate wrapper scripts
 	fmt.Println("\nGenerating wrapper scripts...")
 	wrapperGen := wrapper.NewGenerator(i.config.StoreRoot, i.config.WrapperDir, i.config.SymlinkRoot)
+
+	// Build a map of package versions for dependency resolution
+	depVersionMap := make(map[string]string)
+	for _, pkg := range toInstall {
+		depVersionMap[pkg.Name] = pkg.Version
+	}
 
 	for _, pkg := range toInstall {
 		libDirs, err := wrapperGen.DiscoverLibraries(pkg.Name, pkg.Version)
@@ -293,6 +313,12 @@ func (i *InstallCommand) Run(args []string) error {
 		var libDirsList []string
 		for dir := range libDirs {
 			libDirsList = append(libDirsList, dir)
+		}
+
+		// Get dependencies for this package
+		var dependencies []string
+		if deps, exists := depMap[pkg.Name]; exists {
+			dependencies = deps
 		}
 
 		// Generate wrappers only for standard executable locations (usr/bin, usr/sbin)
@@ -313,7 +339,7 @@ func (i *InstallCommand) Run(args []string) error {
 			for _, entry := range entries {
 				if !entry.IsDir() {
 					cmdName := entry.Name()
-					if err := wrapperGen.GenerateWrapper(cmdName, pkg.Name, pkg.Version, libDirsList); err != nil {
+					if err := wrapperGen.GenerateWrapperWithDeps(cmdName, pkg.Name, pkg.Version, libDirsList, dependencies, depVersionMap); err != nil {
 						fmt.Fprintf(os.Stderr, "  ! Warning: Failed to generate wrapper for %s: %v\n", cmdName, err)
 					}
 				}
@@ -338,12 +364,19 @@ func (i *InstallCommand) Run(args []string) error {
 			executables = pkgFileInfo.Executables
 		}
 
+		// Get dependencies for this package from the dependency map
+		var dependencies []string
+		if deps, exists := depMap[pkg.Name]; exists {
+			dependencies = deps
+		}
+
 		regPkg := &registry.Package{
-			Name:        pkg.Name,
-			Version:     pkg.Version,
-			Files:       files,
-			Executables: executables,
-			InstallDate: time.Now().Format(time.RFC3339),
+			Name:         pkg.Name,
+			Version:      pkg.Version,
+			Files:        files,
+			Executables:  executables,
+			Dependencies: dependencies,
+			InstallDate:  time.Now().Format(time.RFC3339),
 		}
 
 		if err := reg.AddPackage(regPkg); err != nil {
@@ -425,4 +458,67 @@ func (i *InstallCommand) isPackageInstalled(pkgName string) bool {
 	// Check if package exists in registry
 	_, exists := reg.GetPackage(pkgName)
 	return exists
+}
+
+// resolveDependenciesWithMap resolves package dependencies and returns a map of dependencies per package.
+// Returns (toInstall, depMap, error) where depMap[pkgName] = []dependentPkgNames
+func (i *InstallCommand) resolveDependenciesWithMap(client *alpm.Client, pkgNames []string, skipDeps bool) ([]download.PackageInfo, map[string][]string, error) {
+	var toInstall []download.PackageInfo
+	visited := make(map[string]bool)
+	depMap := make(map[string][]string) // package -> list of packages that depend on it
+
+	for _, pkgName := range pkgNames {
+		var pkgDeps []string
+		var err error
+
+		if skipDeps {
+			// Just the requested package
+			pkgDeps = []string{pkgName}
+		} else {
+			// Get full dependency tree from ALPM (in correct order)
+			pkgDeps, err = client.ResolveDependencies(pkgName)
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to resolve dependencies for %s: %w", pkgName, err)
+			}
+		}
+
+		// Track which packages depend on which
+		// The last item in pkgDeps is the requested package, the others are its dependencies
+		// We want: depMap[packageName] = its direct dependencies
+		if len(pkgDeps) > 1 && !skipDeps {
+			requestedPkg := pkgDeps[len(pkgDeps)-1]
+			// Store all other packages as dependencies of the requested package
+			depMap[requestedPkg] = append(depMap[requestedPkg], pkgDeps[:len(pkgDeps)-1]...)
+		}
+
+		// Add resolved packages to install list (skip if already visited)
+		for _, depName := range pkgDeps {
+			if visited[depName] {
+				continue // Skip if we've already added it
+			}
+
+			// Check if package is already installed (in registry or store)
+			if i.isPackageInstalled(depName) {
+				fmt.Printf("  ℹ %s already installed, skipping\n", depName)
+				visited[depName] = true
+				continue
+			}
+
+			visited[depName] = true
+
+			// Get package info
+			pkgInfo, err := client.GetPackageInfo(depName)
+			if err != nil {
+				return nil, nil, fmt.Errorf("package not found: %s", depName)
+			}
+
+			toInstall = append(toInstall, download.PackageInfo{
+				Name:    pkgInfo.Name,
+				Version: pkgInfo.Version,
+				Repo:    pkgInfo.Repository,
+			})
+		}
+	}
+
+	return toInstall, depMap, nil
 }
