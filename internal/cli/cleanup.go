@@ -103,7 +103,14 @@ func (c *CleanupCommand) Execute(opts *CleanupOptions) (*CleanupSummary, error) 
 
 	// Create store and symlink managers
 	storeManager := store.NewStore(c.config.StoreRoot)
-	symlinkMgr := symlink.NewManager(c.config.StoreRoot, c.symlinkDir)
+
+	// Determine symlink directory
+	symlinkDir := c.symlinkDir
+	if symlinkDir == "" {
+		symlinkDir = c.config.SymlinkRoot
+	}
+
+	symlinkMgr := symlink.NewManager(c.config.StoreRoot, symlinkDir)
 
 	// Find old versions
 	oldVersions, err := c.findOldVersions(keepVersions)
@@ -316,7 +323,12 @@ func (c *CleanupCommand) isSymlinkActive(pkgName, version string, reg *registry.
 
 // isWrapperActive checks if wrapper script references a specific version
 func (c *CleanupCommand) isWrapperActive(pkgName, version string) (bool, error) {
-	wrapperGen := wrapper.NewGenerator(c.config.StoreRoot, filepath.Join(c.config.BaseDir, "wrappers"), c.symlinkDir)
+	symlinkDir := c.symlinkDir
+	if symlinkDir == "" {
+		symlinkDir = c.config.SymlinkRoot
+	}
+
+	wrapperGen := wrapper.NewGenerator(c.config.StoreRoot, filepath.Join(c.config.BaseDir, "wrappers"), symlinkDir)
 	wrapperPath := wrapperGen.GetWrapperPath(pkgName)
 
 	// Check if wrapper exists

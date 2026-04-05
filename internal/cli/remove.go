@@ -34,7 +34,8 @@ func NewRemoveCommandWithSymlinkDir(cfg *config.Config, symlinkDir string) *Remo
 
 // RemoveOptions holds command-line options for remove.
 type RemoveOptions struct {
-	Force bool // Force removal even if symlinks don't exist
+	Force  bool // Force removal even if symlinks don't exist
+	NoDeps bool // Skip dependency checking
 }
 
 // Run executes the remove command.
@@ -45,12 +46,15 @@ func (r *RemoveCommand) Run(args []string) error {
 	// Parse command-line options
 	packageNames := []string{}
 	for _, arg := range args {
-		if arg == "--force" {
+		switch arg {
+		case "--force":
 			opts.Force = true
-		} else if arg == "--help" || arg == "-h" {
+		case "--no-deps":
+			opts.NoDeps = true
+		case "--help", "-h":
 			r.showHelp()
 			return nil
-		} else {
+		default:
 			packageNames = append(packageNames, arg)
 		}
 	}
@@ -59,7 +63,8 @@ func (r *RemoveCommand) Run(args []string) error {
 		fmt.Fprintln(os.Stderr, "Error: package name required")
 		fmt.Fprintln(os.Stderr, "Usage: chisel remove [options] <package> [package2] ...")
 		fmt.Fprintln(os.Stderr, "Options:")
-		fmt.Fprintln(os.Stderr, "  --force  Force removal even if symlinks don't exist")
+		fmt.Fprintln(os.Stderr, "  --force     Force removal even if symlinks don't exist")
+		fmt.Fprintln(os.Stderr, "  --no-deps   Skip checking for dependent packages")
 		return fmt.Errorf("no packages specified")
 	}
 
@@ -84,11 +89,56 @@ func (r *RemoveCommand) Run(args []string) error {
 		return fmt.Errorf("no packages found to remove")
 	}
 
-	// Remove symlinks if symlink directory is set
-	if r.symlinkDir != "" && r.symlinkDir != "." && r.symlinkDir != "/" {
+	// Check for packages that depend on the ones being removed
+	if !opts.NoDeps {
+		fmt.Println("\nChecking for dependent packages...")
+		allPackages := reg.ListPackages()
+		dependentMap := make(map[string][]string) // pkgName -> list of packages that depend on it
+
+		// Build the dependency map
+		for _, pkg := range allPackages {
+			for _, dep := range pkg.Dependencies {
+				dependentMap[dep] = append(dependentMap[dep], pkg.Name)
+			}
+		}
+
+		// Check if any packages being removed have dependents that are NOT being removed
+		for _, pkg := range toRemove {
+			if dependents, exists := dependentMap[pkg.Name]; exists {
+				var stillInstalled []string
+				toRemoveMap := make(map[string]bool)
+				for _, p := range toRemove {
+					toRemoveMap[p.Name] = true
+				}
+
+				for _, depPkg := range dependents {
+					if !toRemoveMap[depPkg] {
+						stillInstalled = append(stillInstalled, depPkg)
+					}
+				}
+
+				if len(stillInstalled) > 0 {
+					fmt.Printf("  ⚠ Warning: %s is a dependency of: %v\n", pkg.Name, stillInstalled)
+					if !opts.Force {
+						fmt.Fprintf(os.Stderr, "  ! To remove %s anyway, use --force\n", pkg.Name)
+						return fmt.Errorf("packages still depend on %s", pkg.Name)
+					}
+				}
+			}
+		}
+	}
+
+	// Determine symlink directory
+	symlinkDir := r.symlinkDir
+	if symlinkDir == "" {
+		symlinkDir = r.config.SymlinkRoot
+	}
+
+	// Remove symlinks if symlink directory is set and not system root
+	if symlinkDir != "" && symlinkDir != "." && symlinkDir != "/" {
 		fmt.Println("\nRemoving symlinks...")
 		for _, pkg := range toRemove {
-			if err := r.removeSymlinks(pkg, opts); err != nil {
+			if err := r.removeSymlinks(pkg, opts, symlinkDir); err != nil {
 				fmt.Fprintf(os.Stderr, "  ! Warning: Failed to remove symlinks for %s: %v\n", pkg.Name, err)
 				if !opts.Force {
 					return err
@@ -130,9 +180,9 @@ func (r *RemoveCommand) Run(args []string) error {
 }
 
 // removeSymlinks removes all symlinks for a package from the symlink directory.
-func (r *RemoveCommand) removeSymlinks(pkg *registry.Package, opts *RemoveOptions) error {
+func (r *RemoveCommand) removeSymlinks(pkg *registry.Package, opts *RemoveOptions, symlinkDir string) error {
 	for _, filePath := range pkg.Files {
-		symlinkPath := filepath.Join(r.symlinkDir, filePath)
+		symlinkPath := filepath.Join(symlinkDir, filePath)
 
 		// Check if symlink exists
 		stat, err := os.Lstat(symlinkPath)
@@ -163,16 +213,16 @@ func (r *RemoveCommand) removeSymlinks(pkg *registry.Package, opts *RemoveOption
 	}
 
 	// Clean up empty directories
-	r.removeEmptyDirectories()
+	r.removeEmptyDirectories(symlinkDir)
 
 	return nil
 }
 
 // removeEmptyDirectories removes empty directories in the symlink directory tree.
-func (r *RemoveCommand) removeEmptyDirectories() {
+func (r *RemoveCommand) removeEmptyDirectories(symlinkDir string) {
 	// Walk the directory tree from deepest to shallowest, removing empty dirs
-	filepath.Walk(r.symlinkDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil || !info.IsDir() || path == r.symlinkDir {
+	filepath.Walk(symlinkDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || !info.IsDir() || path == symlinkDir {
 			return nil
 		}
 
@@ -189,7 +239,8 @@ func (r *RemoveCommand) showHelp() {
 	fmt.Println("Usage: chisel remove [options] <package> [package2] ...")
 	fmt.Println("")
 	fmt.Println("Options:")
-	fmt.Println("  --force  Force removal even if symlinks are missing or in unexpected state")
+	fmt.Println("  --force     Force removal even if symlinks are missing or in unexpected state")
+	fmt.Println("  --no-deps   Skip checking for dependent packages")
 	fmt.Println("  -h, --help  Show this help message")
 	fmt.Println("")
 	fmt.Println("Examples:")
@@ -199,9 +250,9 @@ func (r *RemoveCommand) showHelp() {
 	fmt.Println("  # Remove multiple packages")
 	fmt.Println("  chisel remove btop curl git")
 	fmt.Println("")
-	fmt.Println("  # Remove with custom symlink directory")
-	fmt.Println("  chisel --symlink-dir /my/app remove vim")
-	fmt.Println("")
 	fmt.Println("  # Force removal even if symlinks are missing")
 	fmt.Println("  chisel remove --force btop")
+	fmt.Println("")
+	fmt.Println("  # Skip dependency checking")
+	fmt.Println("  chisel remove --no-deps vim")
 }
