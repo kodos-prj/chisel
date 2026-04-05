@@ -99,10 +99,6 @@ Found 8 package(s) matching 'nano':
 ## Requirements
 
 - **Go 1.21+** - To build chisel
-- **libalpm** - Arch Linux Package Management library
-  - Ubuntu/Debian: `sudo apt-get install libalpm-dev`
-  - Fedora: `sudo dnf install libalpm-devel`
-  - Arch: `sudo pacman -S pacman`
 - **Root access** - For actual package installation (not needed for --dry-run)
 - **jq** (optional) - For pretty-printing registry contents
 

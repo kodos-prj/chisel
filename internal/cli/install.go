@@ -396,7 +396,7 @@ func (i *InstallCommand) Run(args []string) error {
 // resolveDependencies resolves package dependencies.
 // If skipDeps is true, only returns the requested packages.
 // Otherwise, uses ALPM's ResolveDependencies() to get the full dependency tree.
-func (i *InstallCommand) resolveDependencies(client *alpm.Client, pkgNames []string, skipDeps bool) ([]download.PackageInfo, error) {
+func (i *InstallCommand) resolveDependencies(client *alpm.ALPMClient, pkgNames []string, skipDeps bool) ([]download.PackageInfo, error) {
 	var toInstall []download.PackageInfo
 	visited := make(map[string]bool)
 
@@ -462,7 +462,7 @@ func (i *InstallCommand) isPackageInstalled(pkgName string) bool {
 
 // resolveDependenciesWithMap resolves package dependencies and returns a map of dependencies per package.
 // Returns (toInstall, depMap, error) where depMap[pkgName] = []dependentPkgNames
-func (i *InstallCommand) resolveDependenciesWithMap(client *alpm.Client, pkgNames []string, skipDeps bool) ([]download.PackageInfo, map[string][]string, error) {
+func (i *InstallCommand) resolveDependenciesWithMap(client *alpm.ALPMClient, pkgNames []string, skipDeps bool) ([]download.PackageInfo, map[string][]string, error) {
 	var toInstall []download.PackageInfo
 	visited := make(map[string]bool)
 	depMap := make(map[string][]string) // package -> list of packages that depend on it

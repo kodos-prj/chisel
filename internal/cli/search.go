@@ -51,9 +51,9 @@ func (s *SearchCommand) Execute(pattern string) error {
 	fmt.Printf("Found %d package(s) matching '%s':\n\n", len(packages), pattern)
 
 	for _, pkg := range packages {
-		fmt.Printf("%s/%s %s\n", pkg.DB().Name(), pkg.Name(), pkg.Version())
-		if desc := pkg.Description(); desc != "" {
-			fmt.Printf("    %s\n", desc)
+		fmt.Printf("%s/%s %s\n", pkg.Repository, pkg.Name, pkg.Version)
+		if pkg.Description != "" {
+			fmt.Printf("    %s\n", pkg.Description)
 		}
 		fmt.Println()
 	}
@@ -87,9 +87,9 @@ func (s *SearchCommand) ExactSearch(name string) error {
 	}
 
 	// Display result
-	fmt.Printf("%s/%s %s\n", pkg.DB().Name(), pkg.Name(), pkg.Version())
-	if desc := pkg.Description(); desc != "" {
-		fmt.Printf("    %s\n", desc)
+	fmt.Printf("%s/%s %s\n", pkg.Repository, pkg.Name, pkg.Version)
+	if pkg.Description != "" {
+		fmt.Printf("    %s\n", pkg.Description)
 	}
 
 	return nil

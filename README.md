@@ -20,17 +20,7 @@ Chisel brings Arch packages to ANY distribution by:
 
 ### For Building & Running (on ANY distribution!)
 ```bash
-# Install libalpm (required)
-# Ubuntu/Debian:
-sudo apt-get install libalpm-dev
-
-# Fedora:
-sudo dnf install libalpm-devel
-
-# Arch (already installed):
-# pacman -S pacman
-
-# Build the project
+# Build the project (pure Go, no system dependencies)
 go build -o chisel ./cmd/chisel
 
 # Sync Arch databases
@@ -142,7 +132,7 @@ A **cross-distribution package manager** that:
 
 ### Core
 - **Language**: Go 1.21+
-- **ALPM Bindings**: github.com/Jguer/go-alpm/v2 (v2.3.1)
+- **ALPM Implementation**: Pure Go (no external C dependencies)
 - **Package Format**: Native Arch packages (.pkg.tar.zst)
 - **Package Source**: Arch Linux mirrors (core, extra, community repos)
 - **Filesystem**: Any POSIX (ext4, xfs, btrfs, etc.)
@@ -169,14 +159,12 @@ A **cross-distribution package manager** that:
 ## Resources
 
 ### Go Dependencies
-- [go-alpm/v2](https://github.com/Jguer/go-alpm) - ALPM bindings for Go (v2.3.1, Nov 2025)
-- [go-alpm docs](https://pkg.go.dev/github.com/Jguer/go-alpm/v2) - Package documentation and examples
 - [cobra](https://github.com/spf13/cobra) - CLI framework
 
 ### External Documentation
 - [Arch Linux Wiki - Pacman](https://wiki.archlinux.org/title/Pacman)
 - [Arch Linux Mirrors](https://archlinux.org/mirrors/) - Mirror list for database sync
-- [libalpm Documentation](https://archlinux.org/pacman/libalpm.3.html)
+- [libalpm Documentation](https://archlinux.org/pacman/libalpm.3.html) - Reference for package management concepts
 - [ALPM Package Format](https://wiki.archlinux.org/title/Creating_packages)
 - [Go Best Practices](https://go.dev/doc/effective_go)
 
@@ -190,21 +178,12 @@ A **cross-distribution package manager** that:
 ### Prerequisites
 - **Any Linux distribution** (Ubuntu 22.04+, Fedora 39+, Debian 12+, Arch, etc.)
 - Go 1.21 or higher
-- libalpm installed:
-  - Ubuntu/Debian: `sudo apt-get install libalpm-dev`
-  - Fedora: `sudo dnf install libalpm-devel`
-  - Arch: `sudo pacman -S pacman` (already installed)
 - Docker or Podman (for multi-distribution testing)
 - Root access (for testing actual package operations)
 
 ### Building
 ```bash
-# Install libalpm (one-time)
-# Ubuntu/Debian: sudo apt-get install libalpm-dev
-# Fedora: sudo dnf install libalpm-devel
-# Arch: sudo pacman -S pacman
-
-# Build the project
+# Build the project (pure Go, no system dependencies)
 go build -o chisel ./cmd/chisel
 
 # Run tests

@@ -6,7 +6,7 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/Jguer/go-alpm/v2"
+	chiselalpm "github.com/kodos-prj/chisel/pkg/alpm"
 	"github.com/kodos-prj/chisel/pkg/config"
 	"github.com/kodos-prj/chisel/pkg/download"
 	"github.com/kodos-prj/chisel/pkg/registry"
@@ -82,18 +82,16 @@ func (u *UpgradeCommand) Execute(options *UpgradeOptions) (*UpgradeSummary, erro
 
 	summary := &UpgradeSummary{}
 
-	// Initialize ALPM client
-	client, err := alpm.Initialize(u.config.AlpmRoot, u.config.AlpmDBPath)
+	// Initialize ALPM client using new pure Go wrapper
+	client, err := chiselalpm.NewClient(u.config.AlpmRoot, u.config.AlpmDBPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize ALPM: %w", err)
 	}
-	defer client.Release()
+	defer client.Close()
 
 	// Register sync databases
-	for _, repo := range u.config.Repositories {
-		if _, err := client.RegisterSyncDB(repo, 0); err != nil {
-			return nil, fmt.Errorf("failed to register database %s: %w", repo, err)
-		}
+	if err := client.RegisterAllSyncDBs(u.config.Repositories); err != nil {
+		return nil, fmt.Errorf("failed to register sync databases: %w", err)
 	}
 
 	// Load registry
@@ -128,21 +126,8 @@ func (u *UpgradeCommand) Execute(options *UpgradeOptions) (*UpgradeSummary, erro
 
 	summary.Total = len(candidates)
 
-	// Resolve dependencies
-	allCandidates, err := u.resolveDependencies(client, candidates, reg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to resolve dependencies: %w", err)
-	}
-
-	// Count auto-added packages
-	for _, pkg := range allCandidates {
-		if pkg.IsAutoAdded {
-			summary.AutoAddedCount++
-		}
-	}
-
 	// Show plan
-	u.showPlan(allCandidates, options.Verbose)
+	u.showPlan(candidates, options.Verbose)
 
 	// If dry-run, exit here
 	if options.DryRun {
@@ -153,7 +138,7 @@ func (u *UpgradeCommand) Execute(options *UpgradeOptions) (*UpgradeSummary, erro
 	}
 
 	// Execute upgrades
-	results := u.executeUpgrades(allCandidates, options.Verbose, u.config, u.symlinkDir)
+	results := u.executeUpgrades(candidates, options.Verbose, u.config, u.symlinkDir)
 
 	// Count results
 	for _, result := range results {
@@ -174,14 +159,14 @@ func (u *UpgradeCommand) Execute(options *UpgradeOptions) (*UpgradeSummary, erro
 	}
 
 	// Show results
-	u.showResults(allCandidates, results, summary, options.Verbose)
+	u.showResults(candidates, results, summary, options.Verbose)
 
 	return summary, nil
 }
 
 // findCandidates identifies packages that have newer versions available.
 func (u *UpgradeCommand) findCandidates(
-	client *alpm.Handle,
+	client *chiselalpm.ALPMClient,
 	installedPkgs []*registry.Package,
 	selectedPkgs []string,
 ) ([]UpgradeCandidate, error) {
@@ -193,12 +178,6 @@ func (u *UpgradeCommand) findCandidates(
 		selectedMap[pkg] = true
 	}
 
-	// Get sync databases
-	dbs, err := client.SyncDBs()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get sync databases: %w", err)
-	}
-
 	// Check each installed package
 	for _, pkg := range installedPkgs {
 		// Skip if selective upgrade and not selected
@@ -207,32 +186,23 @@ func (u *UpgradeCommand) findCandidates(
 		}
 
 		// Search for package in repositories
-		var repoPkg alpm.IPackage
-		for _, db := range dbs.Slice() {
-			p := db.Pkg(pkg.Name)
-			if p != nil {
-				repoPkg = p
-				break
-			}
-		}
-
-		if repoPkg == nil {
+		repoPkg, err := client.SearchPackage(pkg.Name)
+		if err != nil {
 			continue // Package not found in repo
 		}
 
-		// Compare versions using ALPM's vercmp
-		cmp := alpm.VerCmp(pkg.Version, repoPkg.Version())
-		if cmp < 0 { // Installed version is older
+		// Compare versions using our pure Go version comparison
+		if chiselalpm.VerCmp(pkg.Version, repoPkg.Version) < 0 {
 			pkgInfo := &download.PackageInfo{
-				Name:    repoPkg.Name(),
-				Version: repoPkg.Version(),
-				Repo:    repoPkg.DB().Name(),
+				Name:    repoPkg.Name,
+				Version: repoPkg.Version,
+				Repo:    repoPkg.Repository,
 			}
 
 			candidates = append(candidates, UpgradeCandidate{
 				PackageName:      pkg.Name,
 				InstalledVersion: pkg.Version,
-				AvailableVersion: repoPkg.Version(),
+				AvailableVersion: repoPkg.Version,
 				PackageInfo:      pkgInfo,
 				IsAutoAdded:      false,
 			})
@@ -240,117 +210,6 @@ func (u *UpgradeCommand) findCandidates(
 	}
 
 	return candidates, nil
-}
-
-// resolveDependencies resolves dependencies for candidate packages and auto-adds if needed.
-func (u *UpgradeCommand) resolveDependencies(
-	client *alpm.Handle,
-	candidates []UpgradeCandidate,
-	reg *registry.Registry,
-) ([]UpgradeCandidate, error) {
-	// Create map of candidates for quick lookup
-	candidateMap := make(map[string]*UpgradeCandidate)
-	for i := range candidates {
-		candidateMap[candidates[i].PackageName] = &candidates[i]
-	}
-
-	var allCandidates []UpgradeCandidate
-	processedMap := make(map[string]bool)
-
-	// Process each candidate and their dependencies
-	var processQueue []*UpgradeCandidate
-	for i := range candidates {
-		processQueue = append(processQueue, &candidates[i])
-	}
-
-	for len(processQueue) > 0 {
-		current := processQueue[0]
-		processQueue = processQueue[1:]
-
-		if processedMap[current.PackageName] {
-			continue
-		}
-		processedMap[current.PackageName] = true
-
-		allCandidates = append(allCandidates, *current)
-
-		// Get package info if not already set
-		if current.PackageInfo == nil {
-			dbs, err := client.SyncDBs()
-			if err != nil {
-				continue
-			}
-
-			for _, db := range dbs.Slice() {
-				p := db.Pkg(current.PackageName)
-				if p != nil {
-					current.PackageInfo = &download.PackageInfo{
-						Name:    p.Name(),
-						Version: p.Version(),
-						Repo:    p.DB().Name(),
-					}
-					break
-				}
-			}
-		}
-
-		// Process dependencies
-		if current.PackageInfo != nil {
-			dbs, err := client.SyncDBs()
-			if err != nil {
-				continue
-			}
-
-			// Search for the new version to get its dependencies
-			for _, db := range dbs.Slice() {
-				p := db.Pkg(current.PackageName)
-				if p != nil {
-					deps := p.Depends().Slice()
-					for _, dep := range deps {
-						depName := dep.Name
-
-						// Skip if already processed
-						if processedMap[depName] {
-							continue
-						}
-
-						// Check if dependency is installed
-						if installed, exists := reg.GetPackage(depName); exists {
-							// Check if there's an update available
-							for _, db2 := range dbs.Slice() {
-								depPkg := db2.Pkg(depName)
-								if depPkg != nil {
-									cmp := alpm.VerCmp(installed.Version, depPkg.Version())
-									if cmp < 0 { // Installed version is older
-										// Auto-add to candidates if not already there
-										if _, found := candidateMap[depName]; !found {
-											newCandidate := UpgradeCandidate{
-												PackageName:      depName,
-												InstalledVersion: installed.Version,
-												AvailableVersion: depPkg.Version(),
-												PackageInfo: &download.PackageInfo{
-													Name:    depPkg.Name(),
-													Version: depPkg.Version(),
-													Repo:    depPkg.DB().Name(),
-												},
-												IsAutoAdded: true,
-											}
-											candidateMap[depName] = &newCandidate
-											processQueue = append(processQueue, &newCandidate)
-										}
-									}
-									break
-								}
-							}
-						}
-					}
-					break
-				}
-			}
-		}
-	}
-
-	return allCandidates, nil
 }
 
 // showPlan displays the upgrade plan.

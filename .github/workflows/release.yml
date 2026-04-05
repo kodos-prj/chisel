@@ -24,11 +24,6 @@ jobs:
         with:
           go-version: "1.25"
 
-      - name: Install libalpm
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libalpm-dev libarchive-dev
-
       - name: Get version
         id: version
         run: |
@@ -43,7 +38,6 @@ jobs:
         env:
           GOOS: linux
           GOARCH: amd64
-          CGO_ENABLED: 1
         run: |
           go mod download
           mkdir -p build

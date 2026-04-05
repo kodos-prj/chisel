@@ -107,7 +107,7 @@ func TestFullWorkflowIntegration(t *testing.T) {
 	if pkg == nil {
 		t.Fatal("SearchPackage returned nil")
 	}
-	t.Logf("✓ Found package: %s %s", pkg.Name(), pkg.Version())
+	t.Logf("✓ Found package: %s %s", pkg.Name, pkg.Version)
 
 	// Step 3: Simulate install by updating registry
 	t.Log("Step 3: Simulating installation in registry...")
