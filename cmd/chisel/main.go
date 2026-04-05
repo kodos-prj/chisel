@@ -170,7 +170,9 @@ func loadConfig() *config.Config {
 	// Load config from file (or use defaults if file doesn't exist)
 	cfg, err := config.Load(cfgPath)
 	if err != nil {
-		// If there's an error loading, use defaults
+		// If there's an error loading, show warning and use defaults
+		fmt.Fprintf(os.Stderr, "Warning: Failed to load config from %s: %v\n", cfgPath, err)
+		fmt.Fprintf(os.Stderr, "Using built-in defaults\n")
 		cfg = config.DefaultConfig()
 	}
 	cfg.Normalize()
