@@ -87,9 +87,19 @@ func TestFullWorkflowIntegration(t *testing.T) {
 	}
 	t.Log("✓ Databases synced successfully")
 
+	// Debug: verify files exist
+	entries, err := os.ReadDir(syncPath)
+	if err != nil {
+		t.Fatalf("failed to read sync path: %v", err)
+	}
+	for _, entry := range entries {
+		info, _ := entry.Info()
+		t.Logf("  - %s (%d bytes)", entry.Name(), info.Size())
+	}
+
 	// Step 2: Test search functionality
 	t.Log("Step 2: Testing search...")
-	client, err := alpm.NewClient(cfg.AlpmRoot, cfg.AlpmDBPath)
+	client, err := alpm.NewClient(cfg.AlpmRoot, syncPath)
 	if err != nil {
 		t.Fatalf("failed to create ALPM client: %v", err)
 	}
@@ -99,8 +109,25 @@ func TestFullWorkflowIntegration(t *testing.T) {
 		t.Fatalf("failed to register sync databases: %v", err)
 	}
 
+	// Debug: list registered databases and package counts
+	impl := client.GetImpl().(*alpm.Client)
+	for i, db := range impl.Databases {
+		count := len(db.Packages)
+		t.Logf("Database %d (%s): %d packages", i, db.Name, count)
+		if count > 0 && i == 0 {
+			// Show first few packages
+			j := 0
+			for name := range db.Packages {
+				if j < 5 {
+					t.Logf("  - %s", name)
+				}
+				j++
+			}
+		}
+	}
+
 	// Test searching for a package
-	pkg, err := client.SearchPackage("bash")
+	pkg, err := client.SearchPackage("acl")
 	if err != nil {
 		t.Fatalf("SearchPackage failed: %v", err)
 	}

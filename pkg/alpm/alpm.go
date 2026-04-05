@@ -199,3 +199,8 @@ func (c *ALPMClient) GetDownloadURL(pkg *Package, mirrorURL string) string {
 	}
 	return ""
 }
+
+// GetImpl returns the internal client implementation (for testing)
+func (c *ALPMClient) GetImpl() interface{} {
+	return c.impl
+}

@@ -6,6 +6,7 @@ import (
 	"compress/gzip"
 	"fmt"
 	"io"
+	"os"
 	"strconv"
 	"strings"
 )
@@ -13,14 +14,24 @@ import (
 // parsePackageDatabase parses an Arch Linux sync database tar.gz format.
 // The database contains package directories, each with metadata files.
 // Returns a map of package names to Package objects.
+// Note: The data may be gzipped or uncompressed (curl/http.Client may auto-decompress)
 func parsePackageDatabase(data []byte, arch string) (map[string]*Package, error) {
-	gr, err := gzip.NewReader(bytes.NewReader(data))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create gzip reader: %w", err)
-	}
-	defer gr.Close()
+	var tr *tar.Reader
 
-	tr := tar.NewReader(gr)
+	// Check if data is gzipped
+	if len(data) > 2 && data[0] == 0x1f && data[1] == 0x8b {
+		// Data is gzipped - decompress first
+		gr, err := gzip.NewReader(bytes.NewReader(data))
+		if err != nil {
+			return nil, fmt.Errorf("failed to create gzip reader: %w", err)
+		}
+		defer gr.Close()
+		tr = tar.NewReader(gr)
+	} else {
+		// Data is already uncompressed tar archive
+		tr = tar.NewReader(bytes.NewReader(data))
+	}
+
 	packages := make(map[string]*Package)
 	currentPkg := make(map[string][]string) // package name -> file content map
 
@@ -105,20 +116,35 @@ func parsePackageEntry(files map[string]string, arch string) (*Package, error) {
 		Architecture: arch,
 	}
 
-	// Parse FILENAME first to get basic info
-	if filename, ok := files["FILENAME"]; ok {
-		// Format: %NAME% %VERSION% %CSIZE% %ISIZE% %ARCH%
-		parts := strings.Fields(filename)
-		if len(parts) >= 5 {
-			pkg.Name = parts[0]
-			pkg.Version = parts[1]
-			if csize, err := strconv.ParseInt(parts[2], 10, 64); err == nil {
-				pkg.CompressedSize = csize
+	// Parse DESC file first - it contains the metadata
+	if desc, ok := files["desc"]; ok {
+		// Parse NAME from desc
+		pkg.Name = parseMetadata("NAME", desc)
+		// Parse VERSION from desc
+		pkg.Version = parseMetadata("VERSION", desc)
+		// Parse DESCRIPTION from desc
+		pkg.Description = parseMetadata("DESC", desc)
+		// Parse REPOSITORY from desc if available
+		repo := parseMetadata("REPO", desc)
+		if repo != "" {
+			pkg.Repository = repo
+		}
+
+		// Parse SIZE fields
+		if csize := parseMetadata("CSIZE", desc); csize != "" {
+			if val, err := strconv.ParseInt(csize, 10, 64); err == nil {
+				pkg.CompressedSize = val
 			}
-			if isize, err := strconv.ParseInt(parts[3], 10, 64); err == nil {
-				pkg.InstalledSize = isize
+		}
+		if isize := parseMetadata("ISIZE", desc); isize != "" {
+			if val, err := strconv.ParseInt(isize, 10, 64); err == nil {
+				pkg.InstalledSize = val
 			}
-			pkg.Architecture = parts[4]
+		}
+
+		// Parse ARCH from desc
+		if arch := parseMetadata("ARCH", desc); arch != "" {
+			pkg.Architecture = arch
 		}
 	}
 
@@ -126,52 +152,47 @@ func parsePackageEntry(files map[string]string, arch string) (*Package, error) {
 		return nil, fmt.Errorf("package name not found")
 	}
 
-	// Parse DESC
-	if desc, ok := files["DESC"]; ok {
-		pkg.Description = parseMetadata("DESC", desc)
-	}
-
 	// Parse other metadata files
-	if content, ok := files["DEPENDS"]; ok {
+	if content, ok := files["depends"]; ok {
 		deps := strings.Split(strings.TrimSpace(content), "\n")
 		for _, dep := range deps {
-			if dep = strings.TrimSpace(dep); dep != "" {
+			if dep = strings.TrimSpace(dep); dep != "" && dep != "%DEPENDS%" {
 				pkg.DependsOn = append(pkg.DependsOn, dep)
 			}
 		}
 	}
 
-	if content, ok := files["OPTDEPENDS"]; ok {
+	if content, ok := files["optdepends"]; ok {
 		deps := strings.Split(strings.TrimSpace(content), "\n")
 		for _, dep := range deps {
-			if dep = strings.TrimSpace(dep); dep != "" {
+			if dep = strings.TrimSpace(dep); dep != "" && dep != "%OPTDEPENDS%" {
 				pkg.OptDepends = append(pkg.OptDepends, dep)
 			}
 		}
 	}
 
-	if content, ok := files["PROVIDES"]; ok {
+	if content, ok := files["provides"]; ok {
 		provides := strings.Split(strings.TrimSpace(content), "\n")
 		for _, prov := range provides {
-			if prov = strings.TrimSpace(prov); prov != "" {
+			if prov = strings.TrimSpace(prov); prov != "" && prov != "%PROVIDES%" {
 				pkg.Provides = append(pkg.Provides, prov)
 			}
 		}
 	}
 
-	if content, ok := files["CONFLICTS"]; ok {
+	if content, ok := files["conflicts"]; ok {
 		conflicts := strings.Split(strings.TrimSpace(content), "\n")
 		for _, conf := range conflicts {
-			if conf = strings.TrimSpace(conf); conf != "" {
+			if conf = strings.TrimSpace(conf); conf != "" && conf != "%CONFLICTS%" {
 				pkg.Conflicts = append(pkg.Conflicts, conf)
 			}
 		}
 	}
 
-	if content, ok := files["REPLACES"]; ok {
+	if content, ok := files["replaces"]; ok {
 		replaces := strings.Split(strings.TrimSpace(content), "\n")
 		for _, repl := range replaces {
-			if repl = strings.TrimSpace(repl); repl != "" {
+			if repl = strings.TrimSpace(repl); repl != "" && repl != "%REPLACES%" {
 				pkg.Replaces = append(pkg.Replaces, repl)
 			}
 		}
@@ -230,8 +251,9 @@ func (c *Client) DownloadDatabase(repoName, repoURL string) (*Database, error) {
 
 // LoadCachedDatabase loads a database from the disk cache.
 func (c *Client) LoadCachedDatabase(repoName string) (*Database, error) {
-	// Construct path: DbPath/repoName.db.tar.gz
-	dbPath := fmt.Sprintf("%s/%s.db.tar.gz", strings.TrimSuffix(c.DbPath, "/"), repoName)
+	// Construct path: DbPath/repoName.db
+	// Arch mirrors serve databases as .db (which is gzip compressed tar)
+	dbPath := fmt.Sprintf("%s/%s.db", strings.TrimSuffix(c.DbPath, "/"), repoName)
 
 	// Read file
 	data, err := readFileToBytes(dbPath)
@@ -269,7 +291,5 @@ func (c *Client) LoadCachedDatabase(repoName string) (*Database, error) {
 // readFileToBytes reads an entire file into a byte slice.
 // This is a helper for loading local cache files.
 func readFileToBytes(filePath string) ([]byte, error) {
-	// In production, use os.ReadFile
-	// For now, this is a stub that would be implemented with proper file I/O
-	panic("not yet implemented - requires file I/O")
+	return os.ReadFile(filePath)
 }
