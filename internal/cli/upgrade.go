@@ -87,7 +87,7 @@ func (u *UpgradeCommand) Execute(options *UpgradeOptions) (*UpgradeSummary, erro
 	summary := &UpgradeSummary{}
 
 	// Initialize ALPM client using new pure Go wrapper
-	client, err := chiselalpm.NewClient(u.config.AlpmRoot, u.config.AlpmDBPath)
+	client, err := chiselalpm.NewClient(u.config.AlpmRoot, u.config.DBPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize ALPM: %w", err)
 	}

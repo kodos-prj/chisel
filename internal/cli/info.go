@@ -33,8 +33,8 @@ func (i *InfoCommand) Execute(name string) error {
 	}
 
 	// Initialize ALPM client
-	// Note: We pass AlpmDBPath (the parent directory), not DBPath (the sync directory)
-	client, err := alpm.NewClient(i.config.AlpmRoot, i.config.AlpmDBPath)
+	// Note: We pass DBPath (the sync database directory), not AlpmDBPath (the parent)
+	client, err := alpm.NewClient(i.config.AlpmRoot, i.config.DBPath)
 	if err != nil {
 		return fmt.Errorf("failed to initialize ALPM: %w", err)
 	}
@@ -159,8 +159,8 @@ func (i *InfoCommand) ExecuteWithDeps(name string) error {
 	}
 
 	// Initialize ALPM client for dependency resolution
-	// Note: We pass AlpmDBPath (the parent directory), not DBPath (the sync directory)
-	client, err := alpm.NewClient(i.config.AlpmRoot, i.config.AlpmDBPath)
+	// Note: We pass DBPath (the sync database directory), not AlpmDBPath (the parent)
+	client, err := alpm.NewClient(i.config.AlpmRoot, i.config.DBPath)
 	if err != nil {
 		return fmt.Errorf("failed to initialize ALPM: %w", err)
 	}

@@ -167,13 +167,28 @@ func loadConfig() *config.Config {
 		}
 	}
 
-	// Load config from file (or use defaults if file doesn't exist)
-	cfg, err := config.Load(cfgPath)
-	if err != nil {
-		// If there's an error loading, show warning and use defaults
-		fmt.Fprintf(os.Stderr, "Warning: Failed to load config from %s: %v\n", cfgPath, err)
-		fmt.Fprintf(os.Stderr, "Using built-in defaults\n")
-		cfg = config.DefaultConfig()
+	// Check if config file exists
+	var cfg *config.Config
+	if _, err := os.Stat(cfgPath); err == nil {
+		// Config file exists, load it
+		cfg, err = config.Load(cfgPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: Failed to load config from %s: %v\n", cfgPath, err)
+			fmt.Fprintf(os.Stderr, "Using user-level defaults\n")
+			userCfg, _ := config.DefaultUserConfig()
+			cfg = userCfg
+		}
+	} else {
+		// Config file doesn't exist, use user-level defaults
+		userCfg, err := config.DefaultUserConfig()
+		if err != nil {
+			// Fall back to system defaults if user config fails
+			fmt.Fprintf(os.Stderr, "Warning: Failed to get user config: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Using built-in defaults\n")
+			cfg = config.DefaultConfig()
+		} else {
+			cfg = userCfg
+		}
 	}
 	cfg.Normalize()
 

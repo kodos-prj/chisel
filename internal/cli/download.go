@@ -29,7 +29,7 @@ func (d *DownloadCommand) Run(args []string) error {
 	}
 
 	// Initialize ALPM to get package info
-	client, err := alpm.NewClient(d.config.AlpmRoot, d.config.AlpmDBPath)
+	client, err := alpm.NewClient(d.config.AlpmRoot, d.config.DBPath)
 	if err != nil {
 		return fmt.Errorf("failed to initialize ALPM: %w", err)
 	}
