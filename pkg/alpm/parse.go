@@ -15,7 +15,7 @@ import (
 // The database contains package directories, each with metadata files.
 // Returns a map of package names to Package objects.
 // Note: The data may be gzipped or uncompressed (curl/http.Client may auto-decompress)
-func parsePackageDatabase(data []byte, arch string) (map[string]*Package, error) {
+func parsePackageDatabase(data []byte, arch, repoName string) (map[string]*Package, error) {
 	var tr *tar.Reader
 
 	// Check if data is gzipped
@@ -87,7 +87,7 @@ func parsePackageDatabase(data []byte, arch string) (map[string]*Package, error)
 
 	// Build Package objects
 	for _, files := range pkgDirs {
-		pkg, err := parsePackageEntry(files, arch)
+		pkg, err := parsePackageEntry(files, arch, repoName)
 		if err != nil {
 			continue // Skip packages that fail to parse
 		}
@@ -111,7 +111,7 @@ func parsePackageDatabase(data []byte, arch string) (map[string]*Package, error)
 }
 
 // parsePackageEntry parses a single package directory's metadata files.
-func parsePackageEntry(files map[string]string, arch string) (*Package, error) {
+func parsePackageEntry(files map[string]string, arch, repoName string) (*Package, error) {
 	pkg := &Package{
 		Architecture: arch,
 	}
@@ -124,10 +124,12 @@ func parsePackageEntry(files map[string]string, arch string) (*Package, error) {
 		pkg.Version = parseMetadata("VERSION", desc)
 		// Parse DESCRIPTION from desc
 		pkg.Description = parseMetadata("DESC", desc)
-		// Parse REPOSITORY from desc if available
+		// Parse REPOSITORY from desc if available, otherwise use the provided repoName
 		repo := parseMetadata("REPO", desc)
 		if repo != "" {
 			pkg.Repository = repo
+		} else {
+			pkg.Repository = repoName
 		}
 
 		// Parse SIZE fields
@@ -260,7 +262,7 @@ func (c *Client) LoadCachedDatabase(repoName string) (*Database, error) {
 	data, err := readFileToBytes(dbPathWithSync)
 	if err == nil {
 		// Found in sync subdirectory, parse and return
-		packages, err := parsePackageDatabase(data, c.Arch)
+		packages, err := parsePackageDatabase(data, c.Arch, repoName)
 		if err != nil {
 			return nil, err
 		}
@@ -293,7 +295,7 @@ func (c *Client) LoadCachedDatabase(repoName string) (*Database, error) {
 	}
 
 	// Parse database
-	packages, err := parsePackageDatabase(data, c.Arch)
+	packages, err := parsePackageDatabase(data, c.Arch, repoName)
 	if err != nil {
 		return nil, err
 	}

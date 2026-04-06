@@ -97,7 +97,7 @@ func DefaultConfig() *Config {
 		CachePath:              filepath.Join(baseDir, "cache"), // Package cache
 		MirrorURL:              "https://mirror.rackspace.com/archlinux",
 		Architecture:           "x86_64",
-		Repositories:           []string{"core", "extra", "community"},
+		Repositories:           []string{"core", "extra"},
 		VerifySignatures:       false, // Optional for simplicity
 		MaxConcurrentDownloads: 5,
 		DownloadTimeout:        300,

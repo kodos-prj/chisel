@@ -81,7 +81,7 @@ func VerifyDatabaseIntegrity(dbPath string) error {
 	}
 
 	// Try to decompress and read tar structure
-	_, err = parsePackageDatabase(data, "x86_64") // Use x86_64 as default for verification
+	_, err = parsePackageDatabase(data, "x86_64", "") // Use x86_64 as default for verification
 	if err != nil {
 		return fmt.Errorf("database integrity check failed: %w", err)
 	}
