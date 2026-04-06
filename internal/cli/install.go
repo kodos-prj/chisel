@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/kodos-prj/chisel/pkg/alpm"
+	"github.com/kodos-prj/chisel/pkg/aur"
+	"github.com/kodos-prj/chisel/pkg/build"
 	"github.com/kodos-prj/chisel/pkg/config"
 	"github.com/kodos-prj/chisel/pkg/download"
 	"github.com/kodos-prj/chisel/pkg/extract"
@@ -16,25 +18,33 @@ import (
 	"github.com/kodos-prj/chisel/pkg/wrapper"
 )
 
-// InstallCommand handles installing packages.
+// InstallCommand handles installing packages from official repos or AUR.
 type InstallCommand struct {
 	config     *config.Config
 	symlinkDir string
+	aurRPC     *aur.RPCClient
+	buildMgr   *build.BuildManager
 }
 
 // NewInstallCommand creates a new install command.
 func NewInstallCommand(cfg *config.Config) *InstallCommand {
+	buildMgr, _ := build.NewBuildManager("/kod/build-cache/", "/kod/build-logs/")
 	return &InstallCommand{
 		config:     cfg,
 		symlinkDir: "",
+		aurRPC:     aur.NewRPCClient(),
+		buildMgr:   buildMgr,
 	}
 }
 
 // NewInstallCommandWithSymlinkDir creates a new install command with a symlink directory.
 func NewInstallCommandWithSymlinkDir(cfg *config.Config, symlinkDir string) *InstallCommand {
+	buildMgr, _ := build.NewBuildManager("/kod/build-cache/", "/kod/build-logs/")
 	return &InstallCommand{
 		config:     cfg,
 		symlinkDir: symlinkDir,
+		aurRPC:     aur.NewRPCClient(),
+		buildMgr:   buildMgr,
 	}
 }
 
@@ -89,9 +99,12 @@ func (i *InstallCommand) Run(args []string) error {
 		return fmt.Errorf("failed to register databases: %w", err)
 	}
 
-	// Resolve package dependencies
+	// Resolve package dependencies using MixedResolver (official + AUR)
 	fmt.Println("Resolving package dependencies...")
-	toInstall, depMap, err := i.resolveDependenciesWithMap(client, pkgNames, opts.NoDeps)
+	resolver := build.NewMixedResolver(client, i.config.AlpmDBPath)
+	defer resolver.Close()
+
+	toInstall, err := i.resolveMixedDependencies(resolver, pkgNames, opts.NoDeps)
 	if err != nil {
 		return fmt.Errorf("failed to resolve dependencies: %w", err)
 	}
@@ -315,11 +328,9 @@ func (i *InstallCommand) Run(args []string) error {
 			libDirsList = append(libDirsList, dir)
 		}
 
-		// Get dependencies for this package
+		// Get dependencies for this package (empty for now with MixedResolver)
 		var dependencies []string
-		if deps, exists := depMap[pkg.Name]; exists {
-			dependencies = deps
-		}
+		// TODO: Track dependencies from MixedResolver in future optimization
 
 		// Generate wrappers only for standard executable locations (usr/bin, usr/sbin)
 		standardExecDirs := []string{"usr/bin", "usr/sbin"}
@@ -364,11 +375,9 @@ func (i *InstallCommand) Run(args []string) error {
 			executables = pkgFileInfo.Executables
 		}
 
-		// Get dependencies for this package from the dependency map
+		// Get dependencies for this package (empty for now with MixedResolver)
 		var dependencies []string
-		if deps, exists := depMap[pkg.Name]; exists {
-			dependencies = deps
-		}
+		// TODO: Track dependencies from MixedResolver in future optimization
 
 		regPkg := &registry.Package{
 			Name:         pkg.Name,
@@ -521,4 +530,72 @@ func (i *InstallCommand) resolveDependenciesWithMap(client *alpm.ALPMClient, pkg
 	}
 
 	return toInstall, depMap, nil
+}
+
+// resolveMixedDependencies resolves dependencies using MixedResolver (official + AUR)
+// Returns packages to install in proper order, handling both official and AUR packages
+func (i *InstallCommand) resolveMixedDependencies(resolver *build.MixedResolver, pkgNames []string, skipDeps bool) ([]download.PackageInfo, error) {
+	var toInstall []download.PackageInfo
+	visited := make(map[string]bool)
+
+	for _, pkgName := range pkgNames {
+		var pkgSources []build.PackageSource
+		var err error
+
+		if skipDeps {
+			// ResolveDependencies will return just the package itself if no deps
+			pkgSources, err = resolver.ResolveDependencies(pkgName)
+		} else {
+			// Get full dependency tree from MixedResolver (official + AUR, recursive)
+			pkgSources, err = resolver.ResolveDependencies(pkgName)
+		}
+
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve %s: %w", pkgName, err)
+		}
+
+		if len(pkgSources) == 0 {
+			return nil, fmt.Errorf("no packages resolved for %s", pkgName)
+		}
+
+		// Add resolved packages to install list
+		for _, pkgSource := range pkgSources {
+			if visited[pkgSource.Name] {
+				continue // Skip if already added
+			}
+
+			// Check if package is already installed
+			if i.isPackageInstalled(pkgSource.Name) {
+				fmt.Printf("  ℹ %s already installed, skipping\n", pkgSource.Name)
+				visited[pkgSource.Name] = true
+				continue
+			}
+
+			visited[pkgSource.Name] = true
+
+			// Determine how to handle the package based on its source
+			if pkgSource.Source == "official" {
+				// Official repository package - will be downloaded
+				toInstall = append(toInstall, download.PackageInfo{
+					Name:    pkgSource.Name,
+					Version: pkgSource.Version,
+					Repo:    pkgSource.Repo,
+				})
+				fmt.Printf("  + %s/%s (official)\n", pkgSource.Name, pkgSource.Version)
+			} else if pkgSource.Source == "aur" {
+				// AUR package - needs to be built
+				fmt.Printf("  + %s/%s (AUR - will be built)\n", pkgSource.Name, pkgSource.Version)
+
+				// For AUR packages, we still add them to the install list
+				// but mark them as AUR so we know to build them
+				toInstall = append(toInstall, download.PackageInfo{
+					Name:    pkgSource.Name,
+					Version: pkgSource.Version,
+					Repo:    "aur", // Special marker for AUR packages
+				})
+			}
+		}
+	}
+
+	return toInstall, nil
 }
