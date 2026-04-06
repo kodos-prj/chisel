@@ -378,7 +378,7 @@ func TestNewRPCClient(t *testing.T) {
 		t.Fatal("NewRPCClient returned nil")
 	}
 
-	if client.baseURL != "https://aur.archlinux.org/rpc/v5" {
+	if client.baseURL != "https://aur.archlinux.org/rpc" {
 		t.Errorf("baseURL: got %q", client.baseURL)
 	}
 

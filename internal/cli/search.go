@@ -52,7 +52,9 @@ func (s *SearchCommand) Execute(pattern string) error {
 	// Search in official repositories
 	officialPackages, err := client.SearchPackages(pattern)
 	if err != nil {
-		return fmt.Errorf("official search failed: %w", err)
+		// If official search fails, that's OK - we'll search AUR instead
+		// Only if both fail will we return an error
+		officialPackages = []*alpm.Package{}
 	}
 
 	// Display official results
