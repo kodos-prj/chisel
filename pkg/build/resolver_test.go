@@ -96,7 +96,7 @@ func TestResolverStateReset(t *testing.T) {
 
 	// Now when we call ResolveDependencies, state should be reset
 	// (We expect an error since we have no real ALPM client, but we can check the state reset)
-	_, _ = resolver.ResolveDependencies("nonexistent-pkg")
+	_, _ = resolver.ResolveDependencies("nonexistent-pkg", true, "")
 
 	// After resolution attempt, the previous visited state should be cleared
 	resolver.mu.RLock()
@@ -204,7 +204,7 @@ func TestDependencyCycleDetection(t *testing.T) {
 
 	// Try to resolve the same package again (simulates cycle)
 	// In real usage, this would be caught during recursive resolution
-	err := resolver.resolveDependenciesRecursive("pkg-a", &[]PackageSource{})
+	err := resolver.resolveDependenciesRecursive("pkg-a", &[]PackageSource{}, false, "")
 	if err == nil {
 		t.Error("expected error for circular dependency")
 	}
@@ -343,7 +343,7 @@ func TestResolverEdgeCases(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := resolver.ResolveDependencies(tt.pkgName)
+			_, err := resolver.ResolveDependencies(tt.pkgName, true, "")
 			if (err != nil) != tt.wantError {
 				t.Errorf("error: got %v, wantError %v", err, tt.wantError)
 			}

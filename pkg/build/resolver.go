@@ -59,8 +59,14 @@ func NewMixedResolver(alpClient *alpm.ALPMClient, buildCacheDir string) *MixedRe
 }
 
 // ResolveDependencies resolves all dependencies for a package
+// Parameters:
+//   - pkgName: name of the package to resolve
+//   - isRootPackage: whether this is the root package (true) or a dependency (false)
+//   - sourceConstraint: "" for auto-detect, "aur" for AUR only, "official" for official only
+//
 // Returns packages in build order (dependencies first, requested package last)
-func (mr *MixedResolver) ResolveDependencies(pkgName string) ([]PackageSource, error) {
+// Note: sourceConstraint is only applied to root packages; dependencies always auto-detect
+func (mr *MixedResolver) ResolveDependencies(pkgName string, isRootPackage bool, sourceConstraint string) ([]PackageSource, error) {
 	// Reset state for new resolution
 	mr.mu.Lock()
 	mr.visited = make(map[string]bool)
@@ -69,7 +75,7 @@ func (mr *MixedResolver) ResolveDependencies(pkgName string) ([]PackageSource, e
 	mr.mu.Unlock()
 
 	var result []PackageSource
-	err := mr.resolveDependenciesRecursive(pkgName, &result)
+	err := mr.resolveDependenciesRecursive(pkgName, &result, isRootPackage, sourceConstraint)
 	if err != nil {
 		return nil, err
 	}
@@ -78,7 +84,7 @@ func (mr *MixedResolver) ResolveDependencies(pkgName string) ([]PackageSource, e
 }
 
 // resolveDependenciesRecursive is the recursive helper for dependency resolution
-func (mr *MixedResolver) resolveDependenciesRecursive(pkgName string, result *[]PackageSource) error {
+func (mr *MixedResolver) resolveDependenciesRecursive(pkgName string, result *[]PackageSource, isRootPackage bool, sourceConstraint string) error {
 	mr.mu.Lock()
 
 	// Check for cycles
@@ -105,12 +111,20 @@ func (mr *MixedResolver) resolveDependenciesRecursive(pkgName string, result *[]
 		mr.mu.Unlock()
 	}()
 
+	// For root packages with sourceConstraint, enforce the constraint
+	// For dependencies, always auto-detect (no constraint)
+	if isRootPackage && sourceConstraint != "" {
+		return mr.resolveSingleSource(pkgName, result, sourceConstraint)
+	}
+
+	// Auto-detect: try official first, then AUR
 	// Try to find package in official repos first
 	officialPkg, err := mr.findOfficialPackage(pkgName)
 	if err == nil && officialPkg != nil {
 		// Found in official repos, resolve its dependencies
 		for _, dep := range officialPkg.Depends {
-			if err := mr.resolveDependenciesRecursive(dep, result); err != nil {
+			// Dependencies always auto-detect (isRootPackage=false, sourceConstraint="")
+			if err := mr.resolveDependenciesRecursive(dep, result, false, ""); err != nil {
 				return err
 			}
 		}
@@ -133,7 +147,8 @@ func (mr *MixedResolver) resolveDependenciesRecursive(pkgName string, result *[]
 	// Resolve AUR dependencies (both runtime and build-time)
 	allDeps := append(aurPkg.Depends, aurPkg.MakeDepends...)
 	for _, dep := range allDeps {
-		if err := mr.resolveDependenciesRecursive(dep, result); err != nil {
+		// Dependencies always auto-detect (isRootPackage=false, sourceConstraint="")
+		if err := mr.resolveDependenciesRecursive(dep, result, false, ""); err != nil {
 			return err
 		}
 	}
@@ -141,6 +156,73 @@ func (mr *MixedResolver) resolveDependenciesRecursive(pkgName string, result *[]
 	// Add the AUR package itself
 	*result = append(*result, *aurPkg)
 	return nil
+}
+
+// resolveSingleSource resolves a package from a specific source only
+func (mr *MixedResolver) resolveSingleSource(pkgName string, result *[]PackageSource, source string) error {
+	mr.mu.Lock()
+	// Check if already visited
+	if mr.visited[pkgName] {
+		mr.mu.Unlock()
+		return nil
+	}
+	// Mark as currently resolving
+	mr.resolving[pkgName] = true
+	mr.mu.Unlock()
+
+	defer func() {
+		mr.mu.Lock()
+		mr.resolving[pkgName] = false
+		mr.visited[pkgName] = true
+		mr.mu.Unlock()
+	}()
+
+	if source == "official" {
+		// Only search official repos
+		officialPkg, err := mr.findOfficialPackage(pkgName)
+		if err != nil {
+			return err
+		}
+		if officialPkg == nil {
+			return fmt.Errorf("package not found in official repositories: %s", pkgName)
+		}
+
+		// Resolve dependencies (always auto-detect for dependencies)
+		for _, dep := range officialPkg.Depends {
+			if err := mr.resolveDependenciesRecursive(dep, result, false, ""); err != nil {
+				return err
+			}
+		}
+
+		// Add the package itself
+		*result = append(*result, *officialPkg)
+		return nil
+
+	} else if source == "aur" {
+		// Only search AUR
+		aurPkg, err := mr.findAURPackage(pkgName)
+		if err != nil {
+			return err
+		}
+		if aurPkg == nil {
+			return fmt.Errorf("package not found in AUR: %s", pkgName)
+		}
+
+		// Resolve dependencies (always auto-detect for dependencies)
+		allDeps := append(aurPkg.Depends, aurPkg.MakeDepends...)
+		for _, dep := range allDeps {
+			if err := mr.resolveDependenciesRecursive(dep, result, false, ""); err != nil {
+				return err
+			}
+		}
+
+		// Add the AUR package itself
+		*result = append(*result, *aurPkg)
+		return nil
+
+	}
+
+	return fmt.Errorf("unknown source constraint: %s", source)
 }
 
 // findOfficialPackage looks up a package in official repositories
@@ -216,12 +298,14 @@ func (mr *MixedResolver) findAURPackage(pkgName string) (*PackageSource, error) 
 
 // ResolveDependenciesWithPreference resolves dependencies with preference for official repos
 // This is the standard flow where official packages are preferred over AUR
+// Note: This method does not use source constraints (all packages auto-detect)
 func (mr *MixedResolver) ResolveDependenciesWithPreference(pkgNames []string, preferOfficial bool) ([]PackageSource, error) {
 	var allResults []PackageSource
 	visited := make(map[string]bool)
 
 	for _, pkgName := range pkgNames {
-		results, err := mr.ResolveDependencies(pkgName)
+		// Call with isRootPackage=true, sourceConstraint="" for auto-detect
+		results, err := mr.ResolveDependencies(pkgName, true, "")
 		if err != nil {
 			return nil, err
 		}
