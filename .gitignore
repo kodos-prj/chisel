@@ -1,5 +1,8 @@
 # Binaries
 /chisel
+/chisel-test
+/chisel-new
+/build/chisel-test
 *.exe
 *.dll
 *.so
