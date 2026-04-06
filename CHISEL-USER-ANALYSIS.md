@@ -155,7 +155,7 @@ Default user configuration created:
   "symlink_root": "~/.local/bin",
   "mirror_url": "https://mirror.rackspace.com/archlinux",
   "architecture": "x86_64",
-  "repositories": ["core", "extra", "community"],
+  "repositories": ["core", "extra"],
   "verify_signatures": false,
   "max_concurrent_downloads": 5,
   "download_timeout": 300,
