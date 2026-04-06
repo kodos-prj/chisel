@@ -113,7 +113,7 @@ func (i *InstallCommand) Run(args []string) error {
 	}
 
 	// Initialize ALPM client
-	client, err := alpm.NewClient(i.config.AlpmRoot, i.config.AlpmDBPath)
+	client, err := alpm.NewClient(i.config.AlpmRoot, i.config.DBPath)
 	if err != nil {
 		return fmt.Errorf("failed to initialize ALPM: %w", err)
 	}

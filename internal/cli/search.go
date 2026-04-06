@@ -37,8 +37,8 @@ func (s *SearchCommand) Execute(pattern string) error {
 	}
 
 	// Initialize ALPM client
-	// Note: We pass AlpmDBPath (the parent directory), not DBPath (the sync directory)
-	client, err := alpm.NewClient(s.config.AlpmRoot, s.config.AlpmDBPath)
+	// Note: We pass DBPath (the sync database directory), not AlpmDBPath (the parent)
+	client, err := alpm.NewClient(s.config.AlpmRoot, s.config.DBPath)
 	if err != nil {
 		return fmt.Errorf("failed to initialize ALPM: %w", err)
 	}
@@ -115,8 +115,8 @@ func (s *SearchCommand) ExactSearch(name string) error {
 	}
 
 	// Initialize ALPM client
-	// Note: We pass AlpmDBPath (the parent directory), not DBPath (the sync directory)
-	client, err := alpm.NewClient(s.config.AlpmRoot, s.config.AlpmDBPath)
+	// Note: We pass DBPath (the sync database directory), not AlpmDBPath (the parent)
+	client, err := alpm.NewClient(s.config.AlpmRoot, s.config.DBPath)
 	if err != nil {
 		return fmt.Errorf("failed to initialize ALPM: %w", err)
 	}

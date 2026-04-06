@@ -2,6 +2,7 @@ package alpm
 
 import (
 	"fmt"
+	"os"
 	"regexp"
 )
 
@@ -35,12 +36,31 @@ func (c *Client) RegisterSyncDB(repo string) error {
 
 // RegisterAllSyncDBs registers multiple sync databases at once.
 // Databases are registered in order, which determines precedence.
+// Databases that don't exist are skipped with a warning instead of failing.
 func (c *Client) RegisterAllSyncDBs(repos []string) error {
+	var registered []string
+	var skipped []string
+
 	for _, repo := range repos {
 		if err := c.RegisterSyncDB(repo); err != nil {
+			// Check if this is a "file not found" error
+			dbPath := fmt.Sprintf("%s/%s.db", c.DbPath, repo)
+			if _, statErr := os.Stat(dbPath); os.IsNotExist(statErr) {
+				// Database file doesn't exist, skip it
+				skipped = append(skipped, repo)
+				continue
+			}
+			// For other errors, return them
 			return err
 		}
+		registered = append(registered, repo)
 	}
+
+	// If no databases were registered, that's an error
+	if len(registered) == 0 {
+		return fmt.Errorf("failed to register any sync databases (checked: %v)", repos)
+	}
+
 	return nil
 }
 
