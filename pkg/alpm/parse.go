@@ -251,12 +251,43 @@ func (c *Client) DownloadDatabase(repoName, repoURL string) (*Database, error) {
 
 // LoadCachedDatabase loads a database from the disk cache.
 func (c *Client) LoadCachedDatabase(repoName string) (*Database, error) {
-	// Construct path: DbPath/repoName.db
+	// Construct path: DbPath/repoName.db or DbPath/sync/repoName.db
 	// Arch mirrors serve databases as .db (which is gzip compressed tar)
-	dbPath := fmt.Sprintf("%s/%s.db", strings.TrimSuffix(c.DbPath, "/"), repoName)
+	// First try the sync subdirectory, then fall back to the base directory
 
-	// Read file
-	data, err := readFileToBytes(dbPath)
+	// Try sync subdirectory first
+	dbPathWithSync := fmt.Sprintf("%s/sync/%s.db", strings.TrimSuffix(c.DbPath, "/"), repoName)
+	data, err := readFileToBytes(dbPathWithSync)
+	if err == nil {
+		// Found in sync subdirectory, parse and return
+		packages, err := parsePackageDatabase(data, c.Arch)
+		if err != nil {
+			return nil, err
+		}
+
+		// Build Provides index
+		provides := make(map[string][]*Package)
+		for _, pkg := range packages {
+			for _, prov := range pkg.Provides {
+				// Parse version constraint if present: "virtual-name=1.0"
+				provName := strings.Split(prov, "=")[0]
+				provides[provName] = append(provides[provName], pkg)
+			}
+		}
+
+		db := &Database{
+			Name:     repoName,
+			Path:     dbPathWithSync,
+			Packages: packages,
+			Provides: provides,
+			Arch:     c.Arch,
+		}
+		return db, nil
+	}
+
+	// Fall back to base directory for backward compatibility
+	dbPath := fmt.Sprintf("%s/%s.db", strings.TrimSuffix(c.DbPath, "/"), repoName)
+	data, err = readFileToBytes(dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read database %s: %w", dbPath, err)
 	}
