@@ -86,13 +86,14 @@ type InstallOptions struct {
 //	chisel install yay                     # Auto-detect (official first, then AUR)
 //	chisel install --source=aur yay        # AUR only
 //	chisel install --source=official firefox  # Official only
-//	chisel install --symlink-prefix /tmp vim  # Install with symlink prefix stripping
+//	chisel install --symlink-prefix=/tmp vim  # Install with symlink prefix stripping
 func (i *InstallCommand) Run(args []string) error {
 	// Parse options and package names
 	opts := InstallOptions{Source: ""}
 	var pkgNames []string
 
-	for _, arg := range args {
+	for idx := 0; idx < len(args); idx++ {
+		arg := args[idx]
 		switch {
 		case strings.HasPrefix(arg, "--source="):
 			// Parse --source= flag
@@ -108,6 +109,13 @@ func (i *InstallCommand) Run(args []string) error {
 			// Parse --symlink-prefix= flag
 			prefix := strings.TrimPrefix(arg, "--symlink-prefix=")
 			opts.SymlinkPrefix = prefix
+		case arg == "--symlink-prefix":
+			// Parse --symlink-prefix VALUE flag (space-separated)
+			if idx+1 >= len(args) {
+				return fmt.Errorf("--symlink-prefix requires a value")
+			}
+			idx++ // Move to next argument
+			opts.SymlinkPrefix = args[idx]
 		case arg == "--no-deps":
 			opts.NoDeps = true
 		case arg == "--no-extract":
