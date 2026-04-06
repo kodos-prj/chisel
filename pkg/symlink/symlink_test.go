@@ -333,3 +333,168 @@ func TestEmptyFileList(t *testing.T) {
 		t.Fatalf("VerifySymlinks with empty list failed: %v", err)
 	}
 }
+
+// Tests for StripPrefix function
+
+func TestStripPrefixWithValidPrefix(t *testing.T) {
+	tests := []struct {
+		name      string
+		path      string
+		prefix    string
+		expected  string
+		wantError bool
+	}{
+		{
+			name:      "Strip prefix from absolute path",
+			path:      "/tmp/kod/store/bash/5.3.9-1/bin/bash",
+			prefix:    "/tmp",
+			expected:  "/kod/store/bash/5.3.9-1/bin/bash",
+			wantError: false,
+		},
+		{
+			name:      "Strip nested prefix",
+			path:      "/tmp/test/kod/store/app/v1",
+			prefix:    "/tmp/test",
+			expected:  "/kod/store/app/v1",
+			wantError: false,
+		},
+		{
+			name:      "Prefix is just slash",
+			path:      "/usr/bin/bash",
+			prefix:    "/",
+			expected:  "/usr/bin/bash",
+			wantError: false,
+		},
+		{
+			name:      "Empty prefix",
+			path:      "/usr/bin/bash",
+			prefix:    "",
+			expected:  "/usr/bin/bash",
+			wantError: false,
+		},
+		{
+			name:      "Path is prefix plus slash",
+			path:      "/tmp/",
+			prefix:    "/tmp",
+			expected:  "/",
+			wantError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := StripPrefix(tt.path, tt.prefix)
+			if (err != nil) != tt.wantError {
+				t.Errorf("StripPrefix() error = %v, wantError %v", err, tt.wantError)
+				return
+			}
+			if result != tt.expected {
+				t.Errorf("StripPrefix() got %s, want %s", result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestStripPrefixWithInvalidPrefix(t *testing.T) {
+	tests := []struct {
+		name      string
+		path      string
+		prefix    string
+		wantError bool
+	}{
+		{
+			name:      "Path doesn't start with prefix",
+			path:      "/usr/bin/bash",
+			prefix:    "/tmp",
+			wantError: true,
+		},
+		{
+			name:      "Prefix doesn't match due to partial path component",
+			path:      "/tmp2/kod/store",
+			prefix:    "/tmp",
+			wantError: true,
+		},
+		{
+			name:      "Path is shorter than prefix",
+			path:      "/t",
+			prefix:    "/tmp",
+			wantError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := StripPrefix(tt.path, tt.prefix)
+			if (err != nil) != tt.wantError {
+				t.Errorf("StripPrefix() error = %v, wantError %v", err, tt.wantError)
+			}
+		})
+	}
+}
+
+func TestCreateSymlinksWithPrefix(t *testing.T) {
+	tmpDir := t.TempDir()
+	storeRoot := filepath.Join(tmpDir, "store")
+	symlinkRoot := filepath.Join(tmpDir, "root")
+	stripPrefix := tmpDir // Will strip the temp dir prefix
+
+	// Create test directories
+	os.MkdirAll(filepath.Join(storeRoot, "bash", "5.3.9-1", "usr", "bin"), 0755)
+	os.MkdirAll(filepath.Join(symlinkRoot, "usr", "bin"), 0755)
+
+	// Create fake store file
+	storeFile := filepath.Join(storeRoot, "bash", "5.3.9-1", "usr", "bin", "bash")
+	os.WriteFile(storeFile, []byte("dummy"), 0644)
+
+	m := NewManagerWithPrefix(storeRoot, symlinkRoot, stripPrefix)
+
+	// Test creating symlink with prefix stripping
+	files := []string{"usr/bin/bash"}
+	err := m.CreateSymlinks("bash", "5.3.9-1", files)
+	if err != nil {
+		t.Fatalf("CreateSymlinks failed: %v", err)
+	}
+
+	// Verify symlink was created
+	symlinkPath := filepath.Join(symlinkRoot, "usr", "bin", "bash")
+	target, err := os.Readlink(symlinkPath)
+	if err != nil {
+		t.Fatalf("Readlink failed: %v", err)
+	}
+
+	// Target should have the prefix stripped
+	expectedTarget := filepath.Join("/", filepath.Base(storeRoot), "bash", "5.3.9-1", "usr", "bin", "bash")
+	if target != expectedTarget {
+		t.Errorf("Symlink points to %s, expected %s", target, expectedTarget)
+	}
+}
+
+func TestVerifySymlinksWithPrefix(t *testing.T) {
+	tmpDir := t.TempDir()
+	storeRoot := filepath.Join(tmpDir, "store")
+	symlinkRoot := filepath.Join(tmpDir, "root")
+	stripPrefix := tmpDir
+
+	// Create test directories
+	os.MkdirAll(filepath.Join(storeRoot, "bash", "5.3.9-1", "usr", "bin"), 0755)
+	os.MkdirAll(filepath.Join(symlinkRoot, "usr", "bin"), 0755)
+
+	// Create fake store file
+	storeFile := filepath.Join(storeRoot, "bash", "5.3.9-1", "usr", "bin", "bash")
+	os.WriteFile(storeFile, []byte("dummy"), 0644)
+
+	m := NewManagerWithPrefix(storeRoot, symlinkRoot, stripPrefix)
+
+	// Create symlink with prefix stripping
+	files := []string{"usr/bin/bash"}
+	err := m.CreateSymlinks("bash", "5.3.9-1", files)
+	if err != nil {
+		t.Fatalf("CreateSymlinks failed: %v", err)
+	}
+
+	// Verify should pass
+	err = m.VerifySymlinks("bash", "5.3.9-1", files)
+	if err != nil {
+		t.Fatalf("VerifySymlinks failed: %v", err)
+	}
+}

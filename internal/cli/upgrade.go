@@ -289,7 +289,11 @@ func (u *UpgradeCommand) executeUpgrades(
 		}
 
 		// Use install logic: download → extract → wrap → symlink
+		// Pass symlink prefix from config if available
 		pkgArgs := []string{candidate.PackageName}
+		if u.config.SymlinkPrefix != "" {
+			pkgArgs = append(pkgArgs, "--symlink-prefix", u.config.SymlinkPrefix)
+		}
 		if err := installCmd.Run(pkgArgs); err != nil {
 			result.Success = false
 			result.Error = err

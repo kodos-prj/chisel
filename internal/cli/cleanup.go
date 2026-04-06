@@ -110,7 +110,13 @@ func (c *CleanupCommand) Execute(opts *CleanupOptions) (*CleanupSummary, error) 
 		symlinkDir = c.config.SymlinkRoot
 	}
 
-	symlinkMgr := symlink.NewManager(c.config.StoreRoot, symlinkDir)
+	// Create symlink manager with or without prefix stripping
+	var symlinkMgr *symlink.Manager
+	if c.config.SymlinkPrefix != "" && c.config.SymlinkPrefix != "/" {
+		symlinkMgr = symlink.NewManagerWithPrefix(c.config.StoreRoot, symlinkDir, c.config.SymlinkPrefix)
+	} else {
+		symlinkMgr = symlink.NewManager(c.config.StoreRoot, symlinkDir)
+	}
 
 	// Find old versions
 	oldVersions, err := c.findOldVersions(keepVersions)
@@ -312,9 +318,20 @@ func (c *CleanupCommand) isSymlinkActive(pkgName, version string, reg *registry.
 		}
 
 		// Check if target contains this version path
+		// Handle both absolute paths and prefix-stripped paths
 		expectedPath := filepath.Join(c.config.StoreRoot, pkgName, version)
+
+		// Check absolute path match
 		if strings.Contains(target, expectedPath) {
 			return true, nil // Found active symlink to this version
+		}
+
+		// If prefix stripping is enabled, also check prefix-stripped version
+		if c.config.SymlinkPrefix != "" && c.config.SymlinkPrefix != "/" {
+			strippedPath, err := symlink.StripPrefix(expectedPath, c.config.SymlinkPrefix)
+			if err == nil && strings.Contains(target, strippedPath) {
+				return true, nil // Found active symlink to this version (prefix-stripped)
+			}
 		}
 	}
 

@@ -7,12 +7,52 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
+
+// StripPrefix removes the given prefix from the beginning of a path.
+// If stripPrefix is empty or "/", the original path is returned unchanged.
+// If the path does not start with the prefix, an error is returned.
+// Examples:
+//
+//	StripPrefix("/tmp/kod/store/app/v1", "/tmp") -> "/kod/store/app/v1"
+//	StripPrefix("/tmp/kod/store/app/v1", "") -> "/tmp/kod/store/app/v1" (no error)
+//	StripPrefix("/tmp/kod/store/app/v1", "/") -> "/tmp/kod/store/app/v1" (no error)
+//	StripPrefix("/other/path", "/tmp") -> error (path doesn't start with prefix)
+func StripPrefix(path, stripPrefix string) (string, error) {
+	// If no prefix specified, return path unchanged
+	if stripPrefix == "" || stripPrefix == "/" {
+		return path, nil
+	}
+
+	// Normalize the prefix to ensure it ends with / for proper prefix matching
+	// This prevents "/tmp" from matching "/tmp2"
+	if !strings.HasSuffix(stripPrefix, "/") {
+		stripPrefix = stripPrefix + "/"
+	}
+
+	// Check if path starts with the prefix
+	if !strings.HasPrefix(path, stripPrefix) {
+		// Path doesn't start with prefix - this is an error
+		return "", fmt.Errorf("path %q does not start with prefix %q", path, strings.TrimSuffix(stripPrefix, "/"))
+	}
+
+	// Remove the prefix (including the trailing /)
+	result := path[len(stripPrefix):]
+
+	// Ensure result starts with / for absolute paths
+	if !strings.HasPrefix(result, "/") {
+		result = "/" + result
+	}
+
+	return result, nil
+}
 
 // Manager handles symlink operations for package files.
 type Manager struct {
 	storeRoot   string // Root of the package store (e.g., /kod/store)
 	symlinkRoot string // Root where symlinks are created (e.g., /)
+	stripPrefix string // Prefix to strip from symlink targets (e.g., /tmp for chroot)
 }
 
 // NewManager creates a new symlink manager.
@@ -25,11 +65,26 @@ func NewManager(storeRoot, symlinkRoot string) *Manager {
 	return &Manager{
 		storeRoot:   storeRoot,
 		symlinkRoot: symlinkRoot,
+		stripPrefix: "",
+	}
+}
+
+// NewManagerWithPrefix creates a new symlink manager with optional prefix stripping.
+// stripPrefix is the prefix to remove from symlink targets (e.g., /tmp for chroot scenarios)
+func NewManagerWithPrefix(storeRoot, symlinkRoot, stripPrefix string) *Manager {
+	if symlinkRoot == "" {
+		symlinkRoot = "/"
+	}
+	return &Manager{
+		storeRoot:   storeRoot,
+		symlinkRoot: symlinkRoot,
+		stripPrefix: stripPrefix,
 	}
 }
 
 // CreateSymlinks creates symlinks for all files in a package.
 // It skips files that already exist unless they are existing symlinks pointing elsewhere.
+// If stripPrefix is configured, it will be removed from symlink targets.
 func (m *Manager) CreateSymlinks(pkgName, version string, files []string) error {
 	if len(files) == 0 {
 		return nil // Nothing to do
@@ -47,6 +102,17 @@ func (m *Manager) CreateSymlinks(pkgName, version string, files []string) error 
 		symlinkPath := m.GetSymlinkPath(file)
 		storePath := m.GetStorePath(pkgName, version, file)
 
+		// Apply prefix stripping if configured
+		targetPath := storePath
+		if m.stripPrefix != "" && m.stripPrefix != "/" {
+			stripped, err := StripPrefix(storePath, m.stripPrefix)
+			if err != nil {
+				failedFiles = append(failedFiles, fmt.Sprintf("%s (prefix strip failed: %v)", file, err))
+				continue
+			}
+			targetPath = stripped
+		}
+
 		// Create parent directories if needed
 		symlinkDir := filepath.Dir(symlinkPath)
 		if err := os.MkdirAll(symlinkDir, 0755); err != nil {
@@ -60,7 +126,7 @@ func (m *Manager) CreateSymlinks(pkgName, version string, files []string) error 
 			if stat.Mode()&os.ModeSymlink == os.ModeSymlink {
 				// It's a symlink, check if it points to the same location
 				target, err := os.Readlink(symlinkPath)
-				if err == nil && target == storePath {
+				if err == nil && target == targetPath {
 					// Symlink already points to correct location, skip
 					continue
 				}
@@ -74,7 +140,7 @@ func (m *Manager) CreateSymlinks(pkgName, version string, files []string) error 
 		}
 		// Path doesn't exist, create symlink
 
-		if err := os.Symlink(storePath, symlinkPath); err != nil {
+		if err := os.Symlink(targetPath, symlinkPath); err != nil {
 			failedFiles = append(failedFiles, fmt.Sprintf("%s (symlink creation failed: %v)", file, err))
 			continue
 		}
@@ -144,6 +210,7 @@ func (m *Manager) RemoveSymlinks(files []string) error {
 }
 
 // VerifySymlinks checks that all symlinks point to the correct locations.
+// It handles both absolute and prefix-stripped symlink targets.
 func (m *Manager) VerifySymlinks(pkgName, version string, files []string) error {
 	if len(files) == 0 {
 		return nil // Nothing to verify
@@ -154,6 +221,17 @@ func (m *Manager) VerifySymlinks(pkgName, version string, files []string) error 
 	for _, file := range files {
 		symlinkPath := m.GetSymlinkPath(file)
 		expectedStorePath := m.GetStorePath(pkgName, version, file)
+
+		// Apply prefix stripping to expected path if configured
+		expectedTarget := expectedStorePath
+		if m.stripPrefix != "" && m.stripPrefix != "/" {
+			stripped, err := StripPrefix(expectedStorePath, m.stripPrefix)
+			if err != nil {
+				issues = append(issues, fmt.Sprintf("%s: prefix strip failed: %v", file, err))
+				continue
+			}
+			expectedTarget = stripped
+		}
 
 		stat, err := os.Lstat(symlinkPath)
 		if err != nil {
@@ -178,8 +256,8 @@ func (m *Manager) VerifySymlinks(pkgName, version string, files []string) error 
 			continue
 		}
 
-		if target != expectedStorePath {
-			issues = append(issues, fmt.Sprintf("%s: points to %s, expected %s", file, target, expectedStorePath))
+		if target != expectedTarget {
+			issues = append(issues, fmt.Sprintf("%s: points to %s, expected %s", file, target, expectedTarget))
 			continue
 		}
 	}

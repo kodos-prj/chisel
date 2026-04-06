@@ -29,6 +29,11 @@ type Config struct {
 	// This is the system root where package files are symlinked to
 	SymlinkRoot string `json:"symlink_root"`
 
+	// SymlinkPrefix is the prefix to strip from symlink targets (optional, for chroot scenarios)
+	// If set (e.g., /tmp), symlinks will have this prefix removed from their targets
+	// This allows the root directory to be used with chroot environments
+	SymlinkPrefix string `json:"symlink_prefix"`
+
 	// StoreRoot is the root directory for the package store
 	// Defaults to {BaseDir}/store
 	StoreRoot string `json:"store_root"`

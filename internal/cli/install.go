@@ -13,6 +13,7 @@ import (
 	"github.com/kodos-prj/chisel/pkg/extract"
 	"github.com/kodos-prj/chisel/pkg/registry"
 	"github.com/kodos-prj/chisel/pkg/store"
+	"github.com/kodos-prj/chisel/pkg/symlink"
 	"github.com/kodos-prj/chisel/pkg/wrapper"
 )
 
@@ -40,34 +41,48 @@ func NewInstallCommandWithSymlinkDir(cfg *config.Config, symlinkDir string) *Ins
 
 // InstallOptions holds command-line options for install.
 type InstallOptions struct {
-	NoDeps    bool
-	NoExtract bool
-	NoSymlink bool
-	Force     bool
+	NoDeps        bool
+	NoExtract     bool
+	NoSymlink     bool
+	Force         bool
+	SymlinkPrefix string // Prefix to strip from symlink targets (e.g., /tmp for chroot)
 }
 
 // Run executes the install command.
 // Usage: chisel install [options] <package> [package2] ...
 //
-//	--no-deps      Skip dependency resolution
-//	--no-extract   Skip extraction (assume already in store)
-//	--no-symlink   Skip symlink creation
-//	--force        Force overwrite of existing symlinks
+//	--no-deps             Skip dependency resolution
+//	--no-extract          Skip extraction (assume already in store)
+//	--no-symlink          Skip symlink creation
+//	--force               Force overwrite of existing symlinks
+//	--symlink-prefix      Strip prefix from symlink targets (e.g., /tmp for chroot)
 func (i *InstallCommand) Run(args []string) error {
 	// Parse options and package names
 	opts := InstallOptions{}
 	var pkgNames []string
 
-	for _, arg := range args {
-		switch arg {
-		case "--no-deps":
+	for j := 0; j < len(args); j++ {
+		arg := args[j]
+		switch {
+		case arg == "--no-deps":
 			opts.NoDeps = true
-		case "--no-extract":
+		case arg == "--no-extract":
 			opts.NoExtract = true
-		case "--no-symlink":
+		case arg == "--no-symlink":
 			opts.NoSymlink = true
-		case "--force":
+		case arg == "--force":
 			opts.Force = true
+		case arg == "--symlink-prefix":
+			// Next argument is the prefix value
+			if j+1 < len(args) {
+				j++
+				opts.SymlinkPrefix = args[j]
+			} else {
+				return fmt.Errorf("--symlink-prefix requires a value")
+			}
+		case strings.HasPrefix(arg, "--symlink-prefix="):
+			// Handle --symlink-prefix=<value> format
+			opts.SymlinkPrefix = strings.TrimPrefix(arg, "--symlink-prefix=")
 		default:
 			pkgNames = append(pkgNames, arg)
 		}
@@ -75,6 +90,11 @@ func (i *InstallCommand) Run(args []string) error {
 
 	if len(pkgNames) == 0 {
 		return fmt.Errorf("package name required")
+	}
+
+	// If symlink prefix not provided via CLI, check config
+	if opts.SymlinkPrefix == "" && i.config.SymlinkPrefix != "" {
+		opts.SymlinkPrefix = i.config.SymlinkPrefix
 	}
 
 	// Initialize ALPM client
@@ -244,12 +264,42 @@ func (i *InstallCommand) Run(args []string) error {
 					// Point it to the storage location: /stor/pkg/version/path
 					symlinkTargetDir := filepath.Join(i.config.StoreRoot, pkg.Name, pkg.Version, filepath.Dir(filePath))
 					targetPath = filepath.Join(symlinkTargetDir, originalTarget)
+
+					// If original target is absolute, apply prefix stripping
+					if opts.SymlinkPrefix != "" && opts.SymlinkPrefix != "/" && filepath.IsAbs(originalTarget) {
+						strippedPath, err := symlink.StripPrefix(targetPath, opts.SymlinkPrefix)
+						if err != nil {
+							fmt.Fprintf(os.Stderr, "  ! Warning: Failed to strip prefix from symlink target %s: %v\n", targetPath, err)
+						} else {
+							targetPath = strippedPath
+						}
+					}
 				} else if strings.HasPrefix(filePath, "usr/bin/") || strings.HasPrefix(filePath, "usr/sbin/") {
 					// Regular executable: point to wrapper
 					targetPath = filepath.Join(i.config.WrapperDir, fileName)
+
+					// Apply prefix stripping if configured
+					if opts.SymlinkPrefix != "" && opts.SymlinkPrefix != "/" {
+						strippedPath, err := symlink.StripPrefix(targetPath, opts.SymlinkPrefix)
+						if err != nil {
+							fmt.Fprintf(os.Stderr, "  ! Warning: Failed to strip prefix from symlink target %s: %v\n", targetPath, err)
+						} else {
+							targetPath = strippedPath
+						}
+					}
 				} else {
 					// Regular file: point to storage
 					targetPath = filepath.Join(i.config.StoreRoot, pkg.Name, pkg.Version, filePath)
+
+					// Apply prefix stripping if configured
+					if opts.SymlinkPrefix != "" && opts.SymlinkPrefix != "/" {
+						strippedPath, err := symlink.StripPrefix(targetPath, opts.SymlinkPrefix)
+						if err != nil {
+							fmt.Fprintf(os.Stderr, "  ! Warning: Failed to strip prefix from symlink target %s: %v\n", targetPath, err)
+						} else {
+							targetPath = strippedPath
+						}
+					}
 				}
 
 				// Check if symlink already exists
@@ -294,7 +344,12 @@ func (i *InstallCommand) Run(args []string) error {
 
 	// Generate wrapper scripts
 	fmt.Println("\nGenerating wrapper scripts...")
-	wrapperGen := wrapper.NewGenerator(i.config.StoreRoot, i.config.WrapperDir, i.config.SymlinkRoot)
+	var wrapperGen *wrapper.Generator
+	if opts.SymlinkPrefix != "" && opts.SymlinkPrefix != "/" {
+		wrapperGen = wrapper.NewGeneratorWithPrefix(i.config.StoreRoot, i.config.WrapperDir, i.config.SymlinkRoot, opts.SymlinkPrefix)
+	} else {
+		wrapperGen = wrapper.NewGenerator(i.config.StoreRoot, i.config.WrapperDir, i.config.SymlinkRoot)
+	}
 
 	// Build a map of package versions for dependency resolution
 	depVersionMap := make(map[string]string)

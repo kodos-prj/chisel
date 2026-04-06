@@ -353,3 +353,101 @@ func TestDiscoverLibrariesEmpty(t *testing.T) {
 		t.Errorf("Expected no libraries, got %d directories", len(libraries))
 	}
 }
+
+// TestGenerateWrapperWithPrefix tests wrapper script generation with prefix stripping.
+func TestGenerateWrapperWithPrefix(t *testing.T) {
+	tmpDir := t.TempDir()
+	storeDir := filepath.Join(tmpDir, "store")
+	wrapperDir := filepath.Join(tmpDir, "wrappers")
+	stripPrefix := tmpDir // Strip the temp directory prefix
+
+	gen := NewGeneratorWithPrefix(storeDir, wrapperDir, "/", stripPrefix)
+
+	libDirs := []string{"lib", "lib64"}
+	err := gen.GenerateWrapper("vim", "vim", "9.0.1", libDirs)
+
+	if err != nil {
+		t.Fatalf("GenerateWrapper failed: %v", err)
+	}
+
+	// Check that wrapper file was created
+	wrapperPath := filepath.Join(wrapperDir, "vim")
+	if _, err := os.Stat(wrapperPath); err != nil {
+		t.Fatalf("Wrapper file not created: %v", err)
+	}
+
+	// Check wrapper content
+	content, err := os.ReadFile(wrapperPath)
+	if err != nil {
+		t.Fatalf("Failed to read wrapper file: %v", err)
+	}
+
+	scriptContent := string(content)
+
+	// Verify script contains expected elements
+	if !strings.Contains(scriptContent, "#!/bin/bash") {
+		t.Error("Wrapper script missing shebang")
+	}
+
+	if !strings.Contains(scriptContent, "LD_LIBRARY_PATH") {
+		t.Error("Wrapper script missing LD_LIBRARY_PATH")
+	}
+
+	// Verify the prefix was stripped from library paths
+	// Library paths should not contain tmpDir since it was stripped
+	if strings.Contains(scriptContent, tmpDir+"/store/vim/9.0.1") {
+		t.Error("Wrapper script contains unstripped prefix in lib paths")
+	}
+
+	// Verify exec statement is present
+	if !strings.Contains(scriptContent, "exec") {
+		t.Error("Wrapper script missing exec statement")
+	}
+}
+
+// TestBuildWrapperScriptWithPrefix tests wrapper script content generation with prefix stripping.
+func TestBuildWrapperScriptWithPrefix(t *testing.T) {
+	tmpDir := t.TempDir()
+	storeRoot := filepath.Join(tmpDir, "store")
+
+	gen := NewGeneratorWithPrefix(storeRoot, "/kod/wrappers", "/", tmpDir)
+
+	// Create stripped library paths (as they would come from GenerateWrapperWithDeps)
+	// These are the paths AFTER prefix stripping
+	libDirs := []string{
+		"/store/vim/9.0.1/lib",
+		"/store/vim/9.0.1/lib64",
+	}
+	script := gen.buildWrapperScript("vim", "vim", "9.0.1", libDirs)
+
+	// Verify script structure
+	if !strings.Contains(script, "#!/bin/bash") {
+		t.Error("Missing shebang")
+	}
+
+	if !strings.Contains(script, "LD_LIBRARY_PATH") {
+		t.Error("Missing LD_LIBRARY_PATH")
+	}
+
+	if !strings.Contains(script, "export") {
+		t.Error("Missing export statement")
+	}
+
+	if !strings.Contains(script, "exec") {
+		t.Error("Missing exec statement")
+	}
+
+	// Verify the prefix was stripped from library paths
+	if strings.Contains(script, tmpDir) {
+		t.Error("Script contains unstripped tmpDir prefix in library paths")
+	}
+
+	// Verify library paths use relative form after stripping
+	if !strings.Contains(script, "/store/vim/9.0.1/lib") {
+		t.Error("Missing stripped lib path in script")
+	}
+
+	if !strings.Contains(script, "/store/vim/9.0.1/lib64") {
+		t.Error("Missing stripped lib64 path in script")
+	}
+}

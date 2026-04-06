@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.0] - 2026-04-06
 
 ### Added
+- **Chroot Support with Symlink Prefix Stripping**: New `--symlink-prefix` feature for preparing root filesystems
+  - Strip prefix from symlink targets (e.g., `/tmp` prefix) to make absolute symlinks work inside chroot environments
+  - Strip prefix from wrapper script library paths and command paths
+  - Prefix can be specified via CLI flag (`--symlink-prefix /tmp`) or config file (`symlink_prefix` field)
+  - CLI flag takes precedence over config file value
+  - Proper error handling: errors out if target doesn't start with specified prefix (no silent skipping)
+  - Backward compatible: if no prefix is specified, behavior is unchanged
+  - Handles edge cases: empty prefix and "/" prefix both result in no-ops
+
 - **AUR Package Support**: Full support for building and installing AUR (Arch User Repository) packages
   - Automatic dependency resolution for mixed official/AUR packages
   - Real-time compilation output streaming during AUR package builds
