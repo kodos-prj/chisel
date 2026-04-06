@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/kodos-prj/chisel/pkg/symlink"
 )
 
 // Generator handles wrapper script creation for packages.
@@ -15,6 +17,7 @@ type Generator struct {
 	storeRoot   string // Root of the package store (e.g., /kod/store)
 	wrapperRoot string // Root where wrapper scripts are created (e.g., /kod/wrappers)
 	symlinkRoot string // Root where symlinks are created (e.g., /)
+	stripPrefix string // Prefix to strip from paths for chroot support (e.g., /tmp)
 }
 
 // NewGenerator creates a new wrapper script generator.
@@ -29,6 +32,21 @@ func NewGenerator(storeRoot, wrapperRoot, symlinkRoot string) *Generator {
 		storeRoot:   storeRoot,
 		wrapperRoot: wrapperRoot,
 		symlinkRoot: symlinkRoot,
+		stripPrefix: "",
+	}
+}
+
+// NewGeneratorWithPrefix creates a new wrapper script generator with prefix stripping support.
+// stripPrefix is the prefix to strip from all paths (e.g., /tmp for chroot support).
+func NewGeneratorWithPrefix(storeRoot, wrapperRoot, symlinkRoot, stripPrefix string) *Generator {
+	if symlinkRoot == "" {
+		symlinkRoot = "/"
+	}
+	return &Generator{
+		storeRoot:   storeRoot,
+		wrapperRoot: wrapperRoot,
+		symlinkRoot: symlinkRoot,
+		stripPrefix: stripPrefix,
 	}
 }
 
@@ -142,6 +160,18 @@ func (g *Generator) GenerateWrapperWithDeps(cmdName, pkgName, version string, li
 	for _, libDir := range libDirs {
 		// Convert to absolute path in store
 		absLibPath := filepath.Join(g.storeRoot, pkgName, version, libDir)
+
+		// Apply prefix stripping if configured
+		if g.stripPrefix != "" {
+			strippedPath, err := symlink.StripPrefix(absLibPath, g.stripPrefix)
+			if err != nil {
+				// Log warning but continue
+				fmt.Fprintf(os.Stderr, "Warning: Failed to strip prefix from %s: %v\n", absLibPath, err)
+			} else {
+				absLibPath = strippedPath
+			}
+		}
+
 		ldLibraryPath = append(ldLibraryPath, absLibPath)
 	}
 
@@ -162,6 +192,18 @@ func (g *Generator) GenerateWrapperWithDeps(cmdName, pkgName, version string, li
 				}
 				for dir := range depLibDirs {
 					absLibPath := filepath.Join(g.storeRoot, depName, depVersion, dir)
+
+					// Apply prefix stripping if configured
+					if g.stripPrefix != "" {
+						strippedPath, err := symlink.StripPrefix(absLibPath, g.stripPrefix)
+						if err != nil {
+							// Log warning but continue
+							fmt.Fprintf(os.Stderr, "Warning: Failed to strip prefix from %s: %v\n", absLibPath, err)
+						} else {
+							absLibPath = strippedPath
+						}
+					}
+
 					ldLibraryPath = append(ldLibraryPath, absLibPath)
 				}
 			}
@@ -184,6 +226,15 @@ func (g *Generator) buildWrapperScript(cmdName, pkgName, version string, ldLibra
 	// Get the actual command path from the store
 	// The binary is in usr/bin or usr/sbin, try usr/bin first
 	cmdPath := filepath.Join(g.storeRoot, pkgName, version, "usr/bin", cmdName)
+
+	// Apply prefix stripping to command path if configured
+	if g.stripPrefix != "" {
+		strippedPath, err := symlink.StripPrefix(cmdPath, g.stripPrefix)
+		if err == nil {
+			cmdPath = strippedPath
+		}
+		// If stripping fails, use the original path
+	}
 
 	// Build LD_LIBRARY_PATH value
 	ldPath := strings.Join(ldLibraryPath, ":")

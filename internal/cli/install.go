@@ -16,6 +16,7 @@ import (
 	"github.com/kodos-prj/chisel/pkg/extract"
 	"github.com/kodos-prj/chisel/pkg/registry"
 	"github.com/kodos-prj/chisel/pkg/store"
+	"github.com/kodos-prj/chisel/pkg/symlink"
 	"github.com/kodos-prj/chisel/pkg/wrapper"
 )
 
@@ -55,11 +56,12 @@ func NewInstallCommandWithSymlinkDir(cfg *config.Config, symlinkDir string) *Ins
 
 // InstallOptions holds command-line options for install.
 type InstallOptions struct {
-	NoDeps    bool
-	NoExtract bool
-	NoSymlink bool
-	Force     bool
-	Source    string // "", "aur", or "official"
+	NoDeps        bool
+	NoExtract     bool
+	NoSymlink     bool
+	Force         bool
+	Source        string // "", "aur", or "official"
+	SymlinkPrefix string // Prefix to strip from symlink targets (e.g., /tmp for chroot)
 }
 
 // Run executes the install command.
@@ -71,6 +73,7 @@ type InstallOptions struct {
 //	--no-extract        Skip extraction (assume already in store)
 //	--no-symlink        Skip symlink creation
 //	--force             Force overwrite of existing symlinks
+//	--symlink-prefix    Strip prefix from symlink targets (e.g., /tmp for chroot)
 //
 // Source Constraint Behavior:
 //   - Root packages: Respect --source= constraint
@@ -83,6 +86,7 @@ type InstallOptions struct {
 //	chisel install yay                     # Auto-detect (official first, then AUR)
 //	chisel install --source=aur yay        # AUR only
 //	chisel install --source=official firefox  # Official only
+//	chisel install --symlink-prefix /tmp vim  # Install with symlink prefix stripping
 func (i *InstallCommand) Run(args []string) error {
 	// Parse options and package names
 	opts := InstallOptions{Source: ""}
@@ -100,6 +104,10 @@ func (i *InstallCommand) Run(args []string) error {
 				return fmt.Errorf("cannot specify multiple --source flags")
 			}
 			opts.Source = source
+		case strings.HasPrefix(arg, "--symlink-prefix="):
+			// Parse --symlink-prefix= flag
+			prefix := strings.TrimPrefix(arg, "--symlink-prefix=")
+			opts.SymlinkPrefix = prefix
 		case arg == "--no-deps":
 			opts.NoDeps = true
 		case arg == "--no-extract":
@@ -354,6 +362,16 @@ func (i *InstallCommand) Run(args []string) error {
 					targetPath = filepath.Join(i.config.StoreRoot, pkg.Name, pkg.Version, filePath)
 				}
 
+				// Apply symlink prefix stripping if configured
+				if opts.SymlinkPrefix != "" {
+					strippedPath, err := symlink.StripPrefix(targetPath, opts.SymlinkPrefix)
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "  ! Warning: Failed to strip prefix from %s: %v\n", targetPath, err)
+						continue
+					}
+					targetPath = strippedPath
+				}
+
 				// Check if symlink already exists
 				if !opts.Force {
 					if stat, err := os.Lstat(symlinkPath); err == nil {
@@ -396,7 +414,12 @@ func (i *InstallCommand) Run(args []string) error {
 
 	// Generate wrapper scripts
 	fmt.Println("\nGenerating wrapper scripts...")
-	wrapperGen := wrapper.NewGenerator(i.config.StoreRoot, i.config.WrapperDir, i.config.SymlinkRoot)
+	var wrapperGen *wrapper.Generator
+	if opts.SymlinkPrefix != "" {
+		wrapperGen = wrapper.NewGeneratorWithPrefix(i.config.StoreRoot, i.config.WrapperDir, i.config.SymlinkRoot, opts.SymlinkPrefix)
+	} else {
+		wrapperGen = wrapper.NewGenerator(i.config.StoreRoot, i.config.WrapperDir, i.config.SymlinkRoot)
+	}
 
 	// Build a map of package versions for dependency resolution
 	depVersionMap := make(map[string]string)
