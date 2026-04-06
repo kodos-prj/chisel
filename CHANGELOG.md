@@ -62,7 +62,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Build cache in `~/.local/share/chisel/build-cache/`
   - Build logs in `~/.local/share/chisel/build-logs/`
 
-## [0.1.0] - 2024-XX-XX
+## [0.1.0] - 2024-04-06
 
 ### Initial Release
 - Core package installation functionality
