@@ -18,10 +18,13 @@ const (
 type Package struct {
 	Name         string   `json:"name"`
 	Version      string   `json:"version"`
+	Source       string   `json:"source"`     // "official" or "aur"
+	Repository   string   `json:"repository"` // e.g., "core", "extra", "aur"
 	Files        []string `json:"files"`
 	Executables  []string `json:"executables"`
 	Dependencies []string `json:"dependencies"`
 	InstallDate  string   `json:"install_date"`
+	UpdateDate   string   `json:"update_date,omitempty"` // When the package was last updated
 }
 
 // Registry manages the package registry.
@@ -113,4 +116,48 @@ func (r *Registry) ListPackages() []*Package {
 		packages = append(packages, pkg)
 	}
 	return packages
+}
+
+// GetAURPackages returns only AUR packages from the registry.
+func (r *Registry) GetAURPackages() []*Package {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	packages := make([]*Package, 0)
+	for _, pkg := range r.packages {
+		if pkg.Source == "aur" {
+			packages = append(packages, pkg)
+		}
+	}
+	return packages
+}
+
+// GetOfficialPackages returns only official repository packages from the registry.
+func (r *Registry) GetOfficialPackages() []*Package {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	packages := make([]*Package, 0)
+	for _, pkg := range r.packages {
+		if pkg.Source == "official" {
+			packages = append(packages, pkg)
+		}
+	}
+	return packages
+}
+
+// UpdatePackageVersion updates only the version and update date for a package.
+// Used when upgrading a package to a newer version.
+func (r *Registry) UpdatePackageVersion(name, version, updateDate string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	pkg, ok := r.packages[name]
+	if !ok {
+		return fmt.Errorf("package not found: %s", name)
+	}
+
+	pkg.Version = version
+	pkg.UpdateDate = updateDate
+	return nil
 }
