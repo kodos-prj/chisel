@@ -5,6 +5,31 @@ All notable changes to Chisel will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-04-06
+
+### Added
+- **Symlink-Prefix Stripping for Chroot Support**: New `--symlink-prefix` flag enables running packages inside chroot environments
+  - Strip path prefixes from symlinks, wrapper scripts, and command paths
+  - Support both equals-separated (`--symlink-prefix=/tmp/demo`) and space-separated (`--symlink-prefix /tmp/demo`) flag syntax
+  - Enable package portability across different mount points and containerized environments
+  - Comprehensive documentation with use cases and examples
+
+- **Generation-Based Registry Management Specification**: Future architecture design for Kodos integration
+  - Per-user registry management with immutable generation snapshots
+  - Planned full rollback capabilities and audit trail
+  - Specification document for future implementation phases
+
+- **Enhanced User Documentation**:
+  - New "Chroot Support with Symlink Prefix Stripping" section in USER-GUIDE.md
+  - Troubleshooting guide for symlink prefix issues
+  - Advanced usage examples combining flags
+
+### Fixed
+- **Feature Branch Cleanup**: Removed outdated `feature/symlink-prefix-stripping` branch after merging into main
+
+### Changed
+- **Repository Management**: Removed community repository from default configuration
+
 ## [0.1.0] - 2026-04-06
 
 ### Added
