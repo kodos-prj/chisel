@@ -3,7 +3,9 @@
 package build
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -112,12 +114,42 @@ func (bm *BuildManager) BuildAURPackage(pkgName, version, pkgbuildPath string) (
 
 // copyBuildFiles copies PKGBUILD and associated files to build directory
 func (bm *BuildManager) copyBuildFiles(srcDir, destDir string) error {
-	// Use cp -r to copy all files
-	cmd := exec.Command("cp", "-r", filepath.Join(srcDir, "."), destDir)
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("failed to copy files: %w\nOutput: %s", err, string(output))
-	}
-	return nil
+	// Walk through source directory and copy all files to destination
+	return filepath.Walk(srcDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		// Get relative path from source
+		relPath, err := filepath.Rel(srcDir, path)
+		if err != nil {
+			return err
+		}
+
+		// Skip the root directory itself
+		if relPath == "." {
+			return nil
+		}
+
+		destPath := filepath.Join(destDir, relPath)
+
+		if info.IsDir() {
+			// Create directory
+			return os.MkdirAll(destPath, info.Mode())
+		}
+
+		// Copy file content
+		srcData, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+
+		if err := os.WriteFile(destPath, srcData, info.Mode()); err != nil {
+			return err
+		}
+
+		return nil
+	})
 }
 
 // executeBuild runs makepkg to build the package
@@ -129,9 +161,19 @@ func (bm *BuildManager) executeBuild(buildDir, logPath string) (string, error) {
 	cmd := exec.Command("makepkg", "-s", "-r", "-C")
 	cmd.Dir = buildDir
 
-	// Capture output to log file
-	output, err := cmd.CombinedOutput()
-	buildOutput := string(output)
+	// Create a buffer to capture output for logging
+	var outputBuffer bytes.Buffer
+
+	// Create a MultiWriter that writes to both console and buffer
+	multiWriter := io.MultiWriter(os.Stdout, &outputBuffer)
+
+	// Stream output to console and capture for logging
+	cmd.Stdout = multiWriter
+	cmd.Stderr = multiWriter
+
+	// Run the command
+	err := cmd.Run()
+	buildOutput := outputBuffer.String()
 
 	if err != nil {
 		return buildOutput, err
