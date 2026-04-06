@@ -15,7 +15,7 @@ import (
 // The database contains package directories, each with metadata files.
 // Returns a map of package names to Package objects.
 // Note: The data may be gzipped or uncompressed (curl/http.Client may auto-decompress)
-func parsePackageDatabase(data []byte, arch string) (map[string]*Package, error) {
+func parsePackageDatabase(data []byte, arch, repoName string) (map[string]*Package, error) {
 	var tr *tar.Reader
 
 	// Check if data is gzipped
@@ -33,7 +33,7 @@ func parsePackageDatabase(data []byte, arch string) (map[string]*Package, error)
 	}
 
 	packages := make(map[string]*Package)
-	currentPkg := make(map[string][]string) // package name -> file content map
+	currentPkg := make(map[string]string) // Store as "pkgpath\x00filename" -> content to avoid issues with colons in version
 
 	for {
 		header, err := tr.Next()
@@ -51,25 +51,22 @@ func parsePackageDatabase(data []byte, arch string) (map[string]*Package, error)
 
 		// Parse file path: "pkgname/filename" or "pkgname-version/filename"
 		parts := strings.Split(header.Name, "/")
-		if len(parts) == 2 {
+		if len(parts) == 2 && parts[1] != "" { // Skip directory entries (parts[1] would be empty for directories)
 			pkgPath := parts[0]
 			fileName := parts[1]
 
-			if _, exists := currentPkg[pkgPath]; !exists {
-				currentPkg[pkgPath] = make([]string, 0)
-			}
-
-			// Store file content with its name
-			key := fmt.Sprintf("%s:%s", pkgPath, fileName)
-			currentPkg[key] = append(currentPkg[key], string(content))
+			// Store file content with its name using a null separator to avoid issues with colons in version
+			key := pkgPath + "\x00" + fileName
+			currentPkg[key] = string(content)
 		}
 	}
 
 	// Now process package data and build Package objects
 	// Group files by package directory
 	pkgDirs := make(map[string]map[string]string)
-	for fullKey, contents := range currentPkg {
-		parts := strings.Split(fullKey, ":")
+	for fullKey, content := range currentPkg {
+		// Split on null byte to get pkgDir and fileName
+		parts := strings.Split(fullKey, "\x00")
 		if len(parts) != 2 {
 			continue
 		}
@@ -80,9 +77,7 @@ func parsePackageDatabase(data []byte, arch string) (map[string]*Package, error)
 			pkgDirs[pkgDir] = make(map[string]string)
 		}
 
-		if len(contents) > 0 {
-			pkgDirs[pkgDir][fileName] = contents[0]
-		}
+		pkgDirs[pkgDir][fileName] = content
 	}
 
 	// Build Package objects
@@ -90,6 +85,11 @@ func parsePackageDatabase(data []byte, arch string) (map[string]*Package, error)
 		pkg, err := parsePackageEntry(files, arch)
 		if err != nil {
 			continue // Skip packages that fail to parse
+		}
+
+		// Set repository name if not already set from descriptor
+		if pkg.Repository == "" {
+			pkg.Repository = repoName
 		}
 
 		// Only keep packages matching the architecture
@@ -262,7 +262,7 @@ func (c *Client) LoadCachedDatabase(repoName string) (*Database, error) {
 	}
 
 	// Parse database
-	packages, err := parsePackageDatabase(data, c.Arch)
+	packages, err := parsePackageDatabase(data, c.Arch, repoName)
 	if err != nil {
 		return nil, err
 	}

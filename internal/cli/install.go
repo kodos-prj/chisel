@@ -2,71 +2,127 @@ package cli
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/kodos-prj/chisel/pkg/alpm"
+	"github.com/kodos-prj/chisel/pkg/aur"
+	"github.com/kodos-prj/chisel/pkg/build"
 	"github.com/kodos-prj/chisel/pkg/config"
 	"github.com/kodos-prj/chisel/pkg/download"
 	"github.com/kodos-prj/chisel/pkg/extract"
 	"github.com/kodos-prj/chisel/pkg/registry"
 	"github.com/kodos-prj/chisel/pkg/store"
+	"github.com/kodos-prj/chisel/pkg/symlink"
 	"github.com/kodos-prj/chisel/pkg/wrapper"
 )
 
-// InstallCommand handles installing packages.
+// InstallCommand handles installing packages from official repos or AUR.
 type InstallCommand struct {
 	config     *config.Config
 	symlinkDir string
+	aurRPC     *aur.RPCClient
+	buildMgr   *build.BuildManager
 }
 
 // NewInstallCommand creates a new install command.
 func NewInstallCommand(cfg *config.Config) *InstallCommand {
+	buildCacheDir := filepath.Join(cfg.BaseDir, "build-cache")
+	buildLogsDir := filepath.Join(cfg.BaseDir, "build-logs")
+	buildMgr, _ := build.NewBuildManager(buildCacheDir, buildLogsDir)
 	return &InstallCommand{
 		config:     cfg,
 		symlinkDir: "",
+		aurRPC:     aur.NewRPCClient(),
+		buildMgr:   buildMgr,
 	}
 }
 
 // NewInstallCommandWithSymlinkDir creates a new install command with a symlink directory.
 func NewInstallCommandWithSymlinkDir(cfg *config.Config, symlinkDir string) *InstallCommand {
+	buildCacheDir := filepath.Join(cfg.BaseDir, "build-cache")
+	buildLogsDir := filepath.Join(cfg.BaseDir, "build-logs")
+	buildMgr, _ := build.NewBuildManager(buildCacheDir, buildLogsDir)
 	return &InstallCommand{
 		config:     cfg,
 		symlinkDir: symlinkDir,
+		aurRPC:     aur.NewRPCClient(),
+		buildMgr:   buildMgr,
 	}
 }
 
 // InstallOptions holds command-line options for install.
 type InstallOptions struct {
-	NoDeps    bool
-	NoExtract bool
-	NoSymlink bool
-	Force     bool
+	NoDeps        bool
+	NoExtract     bool
+	NoSymlink     bool
+	Force         bool
+	Source        string // "", "aur", or "official"
+	SymlinkPrefix string // Prefix to strip from symlink targets (e.g., /tmp for chroot)
 }
 
 // Run executes the install command.
 // Usage: chisel install [options] <package> [package2] ...
 //
-//	--no-deps      Skip dependency resolution
-//	--no-extract   Skip extraction (assume already in store)
-//	--no-symlink   Skip symlink creation
-//	--force        Force overwrite of existing symlinks
+//	--source=aur        Install from AUR only (skip official repositories)
+//	--source=official   Install from official repositories only (skip AUR)
+//	--no-deps           Skip dependency resolution
+//	--no-extract        Skip extraction (assume already in store)
+//	--no-symlink        Skip symlink creation
+//	--force             Force overwrite of existing symlinks
+//	--symlink-prefix    Strip prefix from symlink targets (e.g., /tmp for chroot)
+//
+// Source Constraint Behavior:
+//   - Root packages: Respect --source= constraint
+//   - Dependencies: Always auto-detect from both sources
+//   - Conflicts: Using both --source=aur and --source=official is an error
+//   - Default: Without --source=, official repos checked first, AUR as fallback
+//
+// Examples:
+//
+//	chisel install yay                     # Auto-detect (official first, then AUR)
+//	chisel install --source=aur yay        # AUR only
+//	chisel install --source=official firefox  # Official only
+//	chisel install --symlink-prefix=/tmp vim  # Install with symlink prefix stripping
 func (i *InstallCommand) Run(args []string) error {
 	// Parse options and package names
-	opts := InstallOptions{}
+	opts := InstallOptions{Source: ""}
 	var pkgNames []string
 
-	for _, arg := range args {
-		switch arg {
-		case "--no-deps":
+	for idx := 0; idx < len(args); idx++ {
+		arg := args[idx]
+		switch {
+		case strings.HasPrefix(arg, "--source="):
+			// Parse --source= flag
+			source := strings.TrimPrefix(arg, "--source=")
+			if source != "aur" && source != "official" {
+				return fmt.Errorf("invalid source: %s (must be 'aur' or 'official')", source)
+			}
+			if opts.Source != "" {
+				return fmt.Errorf("cannot specify multiple --source flags")
+			}
+			opts.Source = source
+		case strings.HasPrefix(arg, "--symlink-prefix="):
+			// Parse --symlink-prefix= flag
+			prefix := strings.TrimPrefix(arg, "--symlink-prefix=")
+			opts.SymlinkPrefix = prefix
+		case arg == "--symlink-prefix":
+			// Parse --symlink-prefix VALUE flag (space-separated)
+			if idx+1 >= len(args) {
+				return fmt.Errorf("--symlink-prefix requires a value")
+			}
+			idx++ // Move to next argument
+			opts.SymlinkPrefix = args[idx]
+		case arg == "--no-deps":
 			opts.NoDeps = true
-		case "--no-extract":
+		case arg == "--no-extract":
 			opts.NoExtract = true
-		case "--no-symlink":
+		case arg == "--no-symlink":
 			opts.NoSymlink = true
-		case "--force":
+		case arg == "--force":
 			opts.Force = true
 		default:
 			pkgNames = append(pkgNames, arg)
@@ -78,7 +134,7 @@ func (i *InstallCommand) Run(args []string) error {
 	}
 
 	// Initialize ALPM client
-	client, err := alpm.NewClient(i.config.AlpmRoot, i.config.AlpmDBPath)
+	client, err := alpm.NewClient(i.config.AlpmRoot, i.config.DBPath)
 	if err != nil {
 		return fmt.Errorf("failed to initialize ALPM: %w", err)
 	}
@@ -89,9 +145,16 @@ func (i *InstallCommand) Run(args []string) error {
 		return fmt.Errorf("failed to register databases: %w", err)
 	}
 
-	// Resolve package dependencies
-	fmt.Println("Resolving package dependencies...")
-	toInstall, depMap, err := i.resolveDependenciesWithMap(client, pkgNames, opts.NoDeps)
+	// Resolve package dependencies using MixedResolver (official + AUR)
+	if opts.Source != "" {
+		fmt.Printf("Resolving package dependencies (%s only)...\n", opts.Source)
+	} else {
+		fmt.Println("Resolving package dependencies...")
+	}
+	resolver := build.NewMixedResolver(client, i.config.AlpmDBPath)
+	defer resolver.Close()
+
+	toInstall, err := i.resolveMixedDependencies(resolver, pkgNames, opts.NoDeps, opts.Source)
 	if err != nil {
 		return fmt.Errorf("failed to resolve dependencies: %w", err)
 	}
@@ -114,27 +177,79 @@ func (i *InstallCommand) Run(args []string) error {
 	}
 	extractedFilesMap := make(map[string]map[string]PackageFiles) // pkgName -> version -> PackageFiles
 
-	// Download packages
+	// Separate AUR and official packages
+	var aurPackages []download.PackageInfo
+	var officialPackages []download.PackageInfo
+	for _, pkg := range toInstall {
+		if pkg.Repo == "aur" {
+			aurPackages = append(aurPackages, pkg)
+		} else {
+			officialPackages = append(officialPackages, pkg)
+		}
+	}
+
+	// Download and build packages
 	if !opts.NoExtract {
-		fmt.Println("\nDownloading packages...")
-		downloader := download.NewDownloader(
-			i.config.MirrorURL,
-			i.config.CachePath,
-			i.config.Architecture,
-			i.config.MaxConcurrentDownloads,
-			0,
-		)
+		// Build AUR packages
+		if len(aurPackages) > 0 {
+			fmt.Println("\nBuilding AUR packages...")
+			gitHandler := aur.NewGitHandler(i.config.CachePath)
 
-		results, err := downloader.DownloadPackages(toInstall)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Download warnings: %v\n", err)
+			for _, pkg := range aurPackages {
+				fmt.Printf("Building %s/%s...\n", pkg.Name, pkg.Version)
+
+				// Clone PKGBUILD
+				pkgbuildDir, err := gitHandler.ClonePKGBUILD(pkg.Name, i.config.CachePath)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "✗ Failed to clone PKGBUILD for %s: %v\n", pkg.Name, err)
+					continue
+				}
+
+				// Build the package (pass directory path, not file path)
+				builtPkg, err := i.buildMgr.BuildAURPackage(pkg.Name, pkg.Version, pkgbuildDir)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "✗ Failed to build %s: %v\n", pkg.Name, err)
+					continue
+				}
+
+				fmt.Printf("  ✓ Built %s\n", builtPkg)
+
+				// Copy built package from build cache to regular cache
+				fileName := fmt.Sprintf("%s-%s-x86_64.pkg.tar.zst", pkg.Name, pkg.Version)
+				cachePath := filepath.Join(i.config.CachePath, fileName)
+
+				// Get file size for progress reporting
+				fileInfo, err := os.Stat(builtPkg)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "✗ Failed to get package size: %v\n", err)
+					continue
+				}
+
+				if err := copyFileWithProgress(builtPkg, cachePath, fileInfo.Size()); err != nil {
+					fmt.Fprintf(os.Stderr, "✗ Failed to copy built package to cache: %v\n", err)
+					continue
+				}
+			}
 		}
 
-		if len(results) == 0 {
-			return fmt.Errorf("no packages were successfully downloaded")
-		}
+		// Download official packages
+		if len(officialPackages) > 0 {
+			fmt.Println("\nDownloading packages...")
+			downloader := download.NewDownloader(
+				i.config.MirrorURL,
+				i.config.CachePath,
+				i.config.Architecture,
+				i.config.MaxConcurrentDownloads,
+				0,
+			)
 
-		fmt.Printf("✓ Downloaded %d/%d package(s)\n", len(results), len(toInstall))
+			results, err := downloader.DownloadPackages(officialPackages)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Download warnings: %v\n", err)
+			}
+
+			fmt.Printf("✓ Downloaded %d/%d official package(s)\n", len(results), len(officialPackages))
+		}
 
 		// Extract packages
 		fmt.Println("\nExtracting packages...")
@@ -151,6 +266,9 @@ func (i *InstallCommand) Run(args []string) error {
 				continue
 			}
 
+			// Show extraction progress
+			fmt.Printf("  Extracting %s/%s...\n", pkgInfo.Name, pkgInfo.Version)
+
 			// Extract package
 			extractedFileObjs, err := storeManager.ExtractPackage(cachePath, pkgInfo.Name, pkgInfo.Version)
 			if err != nil {
@@ -158,7 +276,7 @@ func (i *InstallCommand) Run(args []string) error {
 				continue
 			}
 
-			fmt.Printf("  ✓ Extracted %d files\n", len(extractedFileObjs))
+			fmt.Printf("    ✓ Extracted %d files\n", len(extractedFileObjs))
 
 			// Process extracted files
 			if _, exists := extractedFilesMap[pkgInfo.Name]; !exists {
@@ -252,6 +370,16 @@ func (i *InstallCommand) Run(args []string) error {
 					targetPath = filepath.Join(i.config.StoreRoot, pkg.Name, pkg.Version, filePath)
 				}
 
+				// Apply symlink prefix stripping if configured
+				if opts.SymlinkPrefix != "" {
+					strippedPath, err := symlink.StripPrefix(targetPath, opts.SymlinkPrefix)
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "  ! Warning: Failed to strip prefix from %s: %v\n", targetPath, err)
+						continue
+					}
+					targetPath = strippedPath
+				}
+
 				// Check if symlink already exists
 				if !opts.Force {
 					if stat, err := os.Lstat(symlinkPath); err == nil {
@@ -294,7 +422,12 @@ func (i *InstallCommand) Run(args []string) error {
 
 	// Generate wrapper scripts
 	fmt.Println("\nGenerating wrapper scripts...")
-	wrapperGen := wrapper.NewGenerator(i.config.StoreRoot, i.config.WrapperDir, i.config.SymlinkRoot)
+	var wrapperGen *wrapper.Generator
+	if opts.SymlinkPrefix != "" {
+		wrapperGen = wrapper.NewGeneratorWithPrefix(i.config.StoreRoot, i.config.WrapperDir, i.config.SymlinkRoot, opts.SymlinkPrefix)
+	} else {
+		wrapperGen = wrapper.NewGenerator(i.config.StoreRoot, i.config.WrapperDir, i.config.SymlinkRoot)
+	}
 
 	// Build a map of package versions for dependency resolution
 	depVersionMap := make(map[string]string)
@@ -315,11 +448,9 @@ func (i *InstallCommand) Run(args []string) error {
 			libDirsList = append(libDirsList, dir)
 		}
 
-		// Get dependencies for this package
+		// Get dependencies for this package (empty for now with MixedResolver)
 		var dependencies []string
-		if deps, exists := depMap[pkg.Name]; exists {
-			dependencies = deps
-		}
+		// TODO: Track dependencies from MixedResolver in future optimization
 
 		// Generate wrappers only for standard executable locations (usr/bin, usr/sbin)
 		standardExecDirs := []string{"usr/bin", "usr/sbin"}
@@ -364,19 +495,26 @@ func (i *InstallCommand) Run(args []string) error {
 			executables = pkgFileInfo.Executables
 		}
 
-		// Get dependencies for this package from the dependency map
+		// Get dependencies for this package (empty for now with MixedResolver)
 		var dependencies []string
-		if deps, exists := depMap[pkg.Name]; exists {
-			dependencies = deps
+		// TODO: Track dependencies from MixedResolver in future optimization
+
+		// Determine source: official repo or AUR
+		source := "official"
+		if pkg.Repo == "aur" {
+			source = "aur"
 		}
 
 		regPkg := &registry.Package{
 			Name:         pkg.Name,
 			Version:      pkg.Version,
+			Source:       source,
+			Repository:   pkg.Repo,
 			Files:        files,
 			Executables:  executables,
 			Dependencies: dependencies,
 			InstallDate:  time.Now().Format(time.RFC3339),
+			UpdateDate:   time.Now().Format(time.RFC3339),
 		}
 
 		if err := reg.AddPackage(regPkg); err != nil {
@@ -521,4 +659,192 @@ func (i *InstallCommand) resolveDependenciesWithMap(client *alpm.ALPMClient, pkg
 	}
 
 	return toInstall, depMap, nil
+}
+
+// copyFile copies a file from src to dst
+func copyFile(src, dst string) error {
+	srcData, err := os.ReadFile(src)
+	if err != nil {
+		return fmt.Errorf("failed to read source file: %w", err)
+	}
+
+	// Create parent directories if needed
+	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
+		return fmt.Errorf("failed to create destination directory: %w", err)
+	}
+
+	if err := os.WriteFile(dst, srcData, 0644); err != nil {
+		return fmt.Errorf("failed to write destination file: %w", err)
+	}
+
+	return nil
+}
+
+// copyFileWithProgress copies a file from src to dst with progress indication
+func copyFileWithProgress(src, dst string, fileSize int64) error {
+	// Create parent directories if needed
+	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
+		return fmt.Errorf("failed to create destination directory: %w", err)
+	}
+
+	// Open source file
+	srcFile, err := os.Open(src)
+	if err != nil {
+		return fmt.Errorf("failed to open source file: %w", err)
+	}
+	defer srcFile.Close()
+
+	// Create destination file
+	dstFile, err := os.Create(dst)
+	if err != nil {
+		return fmt.Errorf("failed to create destination file: %w", err)
+	}
+	defer dstFile.Close()
+
+	// Create a custom progress writer
+	progressWriter := &ProgressWriter{
+		Total:    fileSize,
+		FileName: filepath.Base(src),
+	}
+
+	// Copy with progress tracking
+	_, err = io.Copy(dstFile, io.TeeReader(srcFile, progressWriter))
+	if err != nil {
+		return fmt.Errorf("failed to copy file: %w", err)
+	}
+
+	fmt.Println() // New line after progress
+	return nil
+}
+
+// ProgressWriter tracks and displays copy progress
+type ProgressWriter struct {
+	Total     int64
+	Written   int64
+	FileName  string
+	LastPrint time.Time
+}
+
+// Write implements io.Writer and tracks progress
+func (pw *ProgressWriter) Write(p []byte) (n int, err error) {
+	n = len(p)
+	pw.Written += int64(n)
+
+	// Print progress every 100ms or when complete
+	now := time.Now()
+	if now.Sub(pw.LastPrint) >= 100*time.Millisecond || pw.Written >= pw.Total {
+		pw.printProgress()
+		pw.LastPrint = now
+	}
+
+	return n, nil
+}
+
+// printProgress prints the current progress
+func (pw *ProgressWriter) printProgress() {
+	if pw.Total <= 0 {
+		return
+	}
+
+	percent := (pw.Written * 100) / pw.Total
+	mbWritten := float64(pw.Written) / (1024 * 1024)
+	mbTotal := float64(pw.Total) / (1024 * 1024)
+
+	// Calculate speed
+	elapsed := time.Since(pw.LastPrint)
+	var speed string
+	if elapsed > 0 {
+		bytesPerSec := float64(pw.Written) / elapsed.Seconds()
+		speed = fmt.Sprintf("%.1fMB/s", bytesPerSec/(1024*1024))
+	}
+
+	// Print progress on same line
+	fmt.Fprintf(os.Stderr, "\rCopying %s... %d%% (%.1fMB/%.1fMB) %s",
+		pw.FileName, percent, mbWritten, mbTotal, speed)
+}
+
+// resolveMixedDependencies resolves dependencies using MixedResolver (official + AUR)
+// Returns packages to install in proper order, handling both official and AUR packages
+func (i *InstallCommand) resolveMixedDependencies(resolver *build.MixedResolver, pkgNames []string, skipDeps bool, sourceConstraint string) ([]download.PackageInfo, error) {
+	var toInstall []download.PackageInfo
+	visited := make(map[string]bool)
+
+	for idx, pkgName := range pkgNames {
+		var pkgSources []build.PackageSource
+		var err error
+
+		// Only apply source constraint to root packages (first package in each call)
+		isRootPackage := idx == 0
+
+		if skipDeps {
+			// ResolveDependencies will return just the package itself if no deps
+			pkgSources, err = resolver.ResolveDependencies(pkgName, isRootPackage, sourceConstraint)
+		} else {
+			// Get full dependency tree from MixedResolver (official + AUR, recursive)
+			pkgSources, err = resolver.ResolveDependencies(pkgName, isRootPackage, sourceConstraint)
+		}
+
+		if err != nil {
+			// Provide helpful error message if source constraint was used
+			if sourceConstraint == "aur" {
+				return nil, fmt.Errorf("package '%s' not found in AUR\nHint: Use 'chisel install %s' to search both sources", pkgName, pkgName)
+			} else if sourceConstraint == "official" {
+				return nil, fmt.Errorf("package '%s' not found in official repositories\nHint: Use 'chisel install %s' to search both sources", pkgName, pkgName)
+			}
+			return nil, fmt.Errorf("failed to resolve %s: %w", pkgName, err)
+		}
+
+		if len(pkgSources) == 0 {
+			return nil, fmt.Errorf("no packages resolved for %s", pkgName)
+		}
+
+		// Add resolved packages to install list
+		for pkgIdx, pkgSource := range pkgSources {
+			if visited[pkgSource.Name] {
+				continue // Skip if already added
+			}
+
+			// Check if package is already installed
+			if i.isPackageInstalled(pkgSource.Name) {
+				fmt.Printf("  ℹ %s already installed, skipping\n", pkgSource.Name)
+				visited[pkgSource.Name] = true
+				continue
+			}
+
+			visited[pkgSource.Name] = true
+
+			// Determine how to handle the package based on its source
+			if pkgSource.Source == "official" {
+				// Official repository package - will be downloaded
+				toInstall = append(toInstall, download.PackageInfo{
+					Name:    pkgSource.Name,
+					Version: pkgSource.Version,
+					Repo:    pkgSource.Repo,
+				})
+				// Show constraint indicator only for root package
+				if isRootPackage && pkgIdx == 0 && sourceConstraint != "" {
+					fmt.Printf("  + %s/%s (official - forced by --source=%s)\n", pkgSource.Name, pkgSource.Version, sourceConstraint)
+				} else {
+					fmt.Printf("  + %s/%s (official)\n", pkgSource.Name, pkgSource.Version)
+				}
+			} else if pkgSource.Source == "aur" {
+				// AUR package - needs to be built
+				// For AUR packages, we still add them to the install list
+				// but mark them as AUR so we know to build them
+				toInstall = append(toInstall, download.PackageInfo{
+					Name:    pkgSource.Name,
+					Version: pkgSource.Version,
+					Repo:    "aur", // Special marker for AUR packages
+				})
+				// Show constraint indicator only for root package
+				if isRootPackage && pkgIdx == 0 && sourceConstraint != "" {
+					fmt.Printf("  + %s/%s (AUR - will be built - forced by --source=%s)\n", pkgSource.Name, pkgSource.Version, sourceConstraint)
+				} else {
+					fmt.Printf("  + %s/%s (AUR - will be built)\n", pkgSource.Name, pkgSource.Version)
+				}
+			}
+		}
+	}
+
+	return toInstall, nil
 }

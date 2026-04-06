@@ -7,7 +7,39 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
+
+// StripPrefix removes a prefix from a path.
+// If stripPrefix is empty or "/", returns the path unchanged.
+// Returns an error if path doesn't start with the prefix (after normalization).
+func StripPrefix(path, stripPrefix string) (string, error) {
+	// Empty or root prefix is a no-op
+	if stripPrefix == "" || stripPrefix == "/" {
+		return path, nil
+	}
+
+	// Normalize prefix by ensuring it ends with "/" to prevent partial matches
+	// E.g., "/tmp" should match "/tmp/foo" but not "/tmp2/foo"
+	if !strings.HasSuffix(stripPrefix, "/") {
+		stripPrefix = stripPrefix + "/"
+	}
+
+	// Check if path starts with the prefix
+	if !strings.HasPrefix(path, stripPrefix) {
+		return "", fmt.Errorf("path %q does not start with prefix %q", path, strings.TrimSuffix(stripPrefix, "/"))
+	}
+
+	// Remove the prefix (including the "/")
+	result := path[len(stripPrefix):]
+
+	// Ensure the result is absolute by adding "/"
+	if !strings.HasPrefix(result, "/") {
+		result = "/" + result
+	}
+
+	return result, nil
+}
 
 // Manager handles symlink operations for package files.
 type Manager struct {

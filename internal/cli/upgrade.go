@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	chiselalpm "github.com/kodos-prj/chisel/pkg/alpm"
+	"github.com/kodos-prj/chisel/pkg/aur"
 	"github.com/kodos-prj/chisel/pkg/config"
 	"github.com/kodos-prj/chisel/pkg/download"
 	"github.com/kodos-prj/chisel/pkg/registry"
@@ -14,10 +15,11 @@ import (
 )
 
 // UpgradeCommand implements the 'chisel upgrade' command.
-// It upgrades installed packages to their latest versions from repositories.
+// It upgrades installed packages to their latest versions from repositories (official and AUR).
 type UpgradeCommand struct {
 	config     *config.Config
 	symlinkDir string
+	aurRPC     *aur.RPCClient
 }
 
 // NewUpgradeCommand creates a new upgrade command instance.
@@ -25,6 +27,7 @@ func NewUpgradeCommand(cfg *config.Config) *UpgradeCommand {
 	return &UpgradeCommand{
 		config:     cfg,
 		symlinkDir: "",
+		aurRPC:     aur.NewRPCClient(),
 	}
 }
 
@@ -33,6 +36,7 @@ func NewUpgradeCommandWithSymlinkDir(cfg *config.Config, symlinkDir string) *Upg
 	return &UpgradeCommand{
 		config:     cfg,
 		symlinkDir: symlinkDir,
+		aurRPC:     aur.NewRPCClient(),
 	}
 }
 
@@ -83,7 +87,7 @@ func (u *UpgradeCommand) Execute(options *UpgradeOptions) (*UpgradeSummary, erro
 	summary := &UpgradeSummary{}
 
 	// Initialize ALPM client using new pure Go wrapper
-	client, err := chiselalpm.NewClient(u.config.AlpmRoot, u.config.AlpmDBPath)
+	client, err := chiselalpm.NewClient(u.config.AlpmRoot, u.config.DBPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize ALPM: %w", err)
 	}
@@ -185,27 +189,51 @@ func (u *UpgradeCommand) findCandidates(
 			continue
 		}
 
-		// Search for package in repositories
+		// First, try to search in official repositories
 		repoPkg, err := client.SearchPackage(pkg.Name)
-		if err != nil {
-			continue // Package not found in repo
+		if err == nil {
+			// Found in official repo - check for version update
+			if chiselalpm.VerCmp(pkg.Version, repoPkg.Version) < 0 {
+				pkgInfo := &download.PackageInfo{
+					Name:    repoPkg.Name,
+					Version: repoPkg.Version,
+					Repo:    repoPkg.Repository,
+				}
+
+				candidates = append(candidates, UpgradeCandidate{
+					PackageName:      pkg.Name,
+					InstalledVersion: pkg.Version,
+					AvailableVersion: repoPkg.Version,
+					PackageInfo:      pkgInfo,
+					IsAutoAdded:      false,
+				})
+			}
+			continue
 		}
 
-		// Compare versions using our pure Go version comparison
-		if chiselalpm.VerCmp(pkg.Version, repoPkg.Version) < 0 {
-			pkgInfo := &download.PackageInfo{
-				Name:    repoPkg.Name,
-				Version: repoPkg.Version,
-				Repo:    repoPkg.Repository,
+		// Not in official repos - if package source is AUR, check AUR for updates
+		if pkg.Source == "aur" {
+			aurPkg, err := u.aurRPC.GetPackage(pkg.Name)
+			if err != nil {
+				continue // Package not found in AUR either
 			}
 
-			candidates = append(candidates, UpgradeCandidate{
-				PackageName:      pkg.Name,
-				InstalledVersion: pkg.Version,
-				AvailableVersion: repoPkg.Version,
-				PackageInfo:      pkgInfo,
-				IsAutoAdded:      false,
-			})
+			// Compare versions using our pure Go version comparison
+			if chiselalpm.VerCmp(pkg.Version, aurPkg.Version) < 0 {
+				pkgInfo := &download.PackageInfo{
+					Name:    aurPkg.Name,
+					Version: aurPkg.Version,
+					Repo:    "aur",
+				}
+
+				candidates = append(candidates, UpgradeCandidate{
+					PackageName:      pkg.Name,
+					InstalledVersion: pkg.Version,
+					AvailableVersion: aurPkg.Version,
+					PackageInfo:      pkgInfo,
+					IsAutoAdded:      false,
+				})
+			}
 		}
 	}
 
