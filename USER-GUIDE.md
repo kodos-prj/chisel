@@ -170,6 +170,67 @@ chisel-user install vim
 chisel-user install vim --no-extract
 ```
 
+### Chroot Support with Symlink Prefix Stripping
+
+The `--symlink-prefix` flag enables running packages inside a chroot environment by stripping path prefixes from symlinks. This is useful for creating isolated package environments.
+
+```bash
+# Install with symlink prefix stripping
+chisel-user install vim --symlink-prefix=/tmp/demo
+
+# Or use space-separated syntax
+chisel-user install vim --symlink-prefix /tmp/demo
+```
+
+#### What It Does
+
+When you install a package with `--symlink-prefix`, chisel modifies the symlink paths by removing the specified prefix. This enables packages to work correctly within a chroot environment.
+
+**Example:**
+- Without prefix stripping: `/tmp/demo/kod/store/vim/bin/vim`
+- With `--symlink-prefix=/tmp/demo`: `/kod/store/vim/bin/vim`
+
+#### Use Cases
+
+1. **Development/Testing**: Create isolated package environments for testing without affecting system packages
+2. **Container Support**: Prepare packages for container deployment
+3. **CI/CD Pipelines**: Build packages in temporary directories and strip paths for reproducibility
+
+#### How It Works
+
+The prefix stripping affects three key areas:
+
+1. **Symlinks**: Symlink targets have the prefix removed
+2. **Wrapper Scripts**: Library paths (LD_LIBRARY_PATH) have the prefix removed
+3. **Command Paths**: Absolute paths in wrapper scripts have the prefix removed
+
+#### Flag Syntax
+
+Both of these are equivalent:
+
+```bash
+# Equals-separated syntax
+chisel-user install vim --symlink-prefix=/tmp/demo
+
+# Space-separated syntax
+chisel-user install vim --symlink-prefix /tmp/demo
+```
+
+#### Advanced Usage
+
+Combine with other flags:
+
+```bash
+# Install with prefix stripping and force overwrite
+chisel-user install vim --symlink-prefix=/tmp/demo --force
+
+# Install multiple packages with prefix stripping
+chisel-user install vim curl wget --symlink-prefix=/tmp/demo
+
+# Install from AUR with prefix stripping
+chisel-user install yay --source=aur --symlink-prefix=/tmp/demo
+```
+
 ### Manage Installed Packages
 
 ```bash
@@ -301,6 +362,37 @@ If you have both user and system configs:
 1. User config takes priority (good for customization)
 2. To force system config: `chisel --base-dir /kod install vim`
 3. To use specific config: `chisel --config /path/to/config.json install vim`
+
+### Symlink prefix stripping issues
+
+If packages don't work correctly with `--symlink-prefix`:
+
+1. Verify the prefix matches your chroot path:
+```bash
+# If you're building in /tmp/demo, use that exact prefix
+chisel-user install vim --symlink-prefix=/tmp/demo
+```
+
+2. Check that symlinks were created correctly:
+```bash
+# List symlinks to see the paths
+ls -la ~/.local/bin/
+```
+
+3. Verify wrapper scripts have stripped paths:
+```bash
+# Check the wrapper script for a package
+cat ~/.local/share/chisel/wrappers/vim-wrapper.sh
+
+# Look for stripped paths (should not contain the prefix)
+```
+
+4. If paths still contain the prefix:
+```bash
+# Reinstall without the prefix and try again
+chisel-user remove vim
+chisel-user install vim --symlink-prefix=/tmp/demo
+```
 
 ## Advanced Usage
 
