@@ -8,13 +8,18 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
+	"github.com/kodos-prj/chisel/pkg/build"
 	"github.com/kodos-prj/chisel/pkg/config"
 	"github.com/kodos-prj/chisel/pkg/registry"
 	"github.com/kodos-prj/chisel/pkg/store"
 	"github.com/kodos-prj/chisel/pkg/symlink"
 	"github.com/kodos-prj/chisel/pkg/wrapper"
 )
+
+// Ensure build package is imported for BuildManager usage
+var _ = (*build.BuildManager)(nil)
 
 // CleanupCommand implements the 'chisel cleanup' command.
 // It removes old package versions from store after verifying no symlinks or wrappers point to them.
@@ -41,10 +46,13 @@ func NewCleanupCommandWithSymlinkDir(cfg *config.Config, symlinkDir string) *Cle
 
 // CleanupOptions holds command-line options for cleanup.
 type CleanupOptions struct {
-	DryRun       bool // Preview mode: don't make changes
-	Verbose      bool // Show detailed output
-	Force        bool // Skip confirmation prompt
-	KeepVersions int  // Number of recent versions to keep (-1 means use config)
+	DryRun           bool          // Preview mode: don't make changes
+	Verbose          bool          // Show detailed output
+	Force            bool          // Skip confirmation prompt
+	KeepVersions     int           // Number of recent versions to keep (-1 means use config)
+	CleanupAUR       bool          // Clean AUR build cache and logs
+	BuildCacheMaxAge time.Duration // Maximum age for build cache directories (default 7 days)
+	BuildLogsMaxAge  time.Duration // Maximum age for build log files (default 7 days)
 }
 
 // VersionStatus tracks the state of a package version
@@ -73,6 +81,9 @@ type CleanupSummary struct {
 	PackagesSkipped       int
 	VersionsSkipped       int
 	OrphanWrappersRemoved int
+	AURBuildDirsRemoved   int   // Number of AUR build directories removed
+	AURLogsRemoved        int   // Number of AUR log files removed
+	AURSpaceFreed         int64 // Space freed from AUR builds
 	TotalResults          []CleanupResult
 }
 
@@ -80,6 +91,14 @@ type CleanupSummary struct {
 func (c *CleanupCommand) Execute(opts *CleanupOptions) (*CleanupSummary, error) {
 	if opts == nil {
 		opts = &CleanupOptions{}
+	}
+
+	// Set default AUR cleanup times
+	if opts.BuildCacheMaxAge == 0 {
+		opts.BuildCacheMaxAge = 7 * 24 * time.Hour // Default 7 days
+	}
+	if opts.BuildLogsMaxAge == 0 {
+		opts.BuildLogsMaxAge = 7 * 24 * time.Hour // Default 7 days
 	}
 
 	summary := &CleanupSummary{
@@ -122,106 +141,210 @@ func (c *CleanupCommand) Execute(opts *CleanupOptions) (*CleanupSummary, error) 
 		if opts.Verbose {
 			fmt.Println("All packages are at their current versions. No cleanup needed.")
 		}
-		return summary, nil
-	}
-
-	// Check status of each old version
-	var toRemove []struct {
-		pkgName string
-		version string
-		status  *VersionStatus
-		result  *CleanupResult
-	}
-
-	for pkgName, versions := range oldVersions {
-		result := CleanupResult{
-			PackageName:     pkgName,
-			VersionsRemoved: []string{},
-			VersionsSkipped: []string{},
+	} else {
+		// Check status of each old version
+		var toRemove []struct {
+			pkgName string
+			version string
+			status  *VersionStatus
+			result  *CleanupResult
 		}
 
-		for _, version := range versions {
-			status, err := c.checkVersionStatus(pkgName, version, reg, symlinkMgr, storeManager)
-			if err != nil {
-				result.VersionsSkipped = append(result.VersionsSkipped, fmt.Sprintf("%s (error: %v)", version, err))
-				summary.VersionsSkipped++
-				continue
+		for pkgName, versions := range oldVersions {
+			result := CleanupResult{
+				PackageName:     pkgName,
+				VersionsRemoved: []string{},
+				VersionsSkipped: []string{},
 			}
 
-			if status.SafeToRemove {
-				toRemove = append(toRemove, struct {
-					pkgName string
-					version string
-					status  *VersionStatus
-					result  *CleanupResult
-				}{pkgName, version, status, &result})
-			} else {
-				result.VersionsSkipped = append(result.VersionsSkipped, fmt.Sprintf("%s (%s)", version, status.Reason))
-				summary.VersionsSkipped++
+			for _, version := range versions {
+				status, err := c.checkVersionStatus(pkgName, version, reg, symlinkMgr, storeManager)
+				if err != nil {
+					result.VersionsSkipped = append(result.VersionsSkipped, fmt.Sprintf("%s (error: %v)", version, err))
+					summary.VersionsSkipped++
+					continue
+				}
+
+				if status.SafeToRemove {
+					toRemove = append(toRemove, struct {
+						pkgName string
+						version string
+						status  *VersionStatus
+						result  *CleanupResult
+					}{pkgName, version, status, &result})
+				} else {
+					result.VersionsSkipped = append(result.VersionsSkipped, fmt.Sprintf("%s (%s)", version, status.Reason))
+					summary.VersionsSkipped++
+				}
+			}
+
+			if len(result.VersionsRemoved) > 0 || len(result.VersionsSkipped) > 0 {
+				summary.TotalResults = append(summary.TotalResults, result)
 			}
 		}
 
-		if len(result.VersionsRemoved) > 0 || len(result.VersionsSkipped) > 0 {
-			summary.TotalResults = append(summary.TotalResults, result)
+		if len(toRemove) > 0 {
+			// Show cleanup plan
+			c.showCleanupPlan(toRemove, opts.Verbose)
+
+			// Ask for confirmation if not --force
+			if !opts.Force && !opts.DryRun {
+				if !c.askForConfirmation(len(toRemove)) {
+					fmt.Println("Cleanup cancelled.")
+					return summary, nil
+				}
+			}
+
+			// If dry-run, stop here
+			if !opts.DryRun {
+				// Execute cleanup
+				for _, item := range toRemove {
+					spaceFreed, err := c.removeVersion(item.pkgName, item.version, storeManager)
+					if err != nil {
+						if opts.Verbose {
+							fmt.Printf("  ✗ Failed to remove %s/%s: %v\n", item.pkgName, item.version, err)
+						}
+						item.result.Error = err
+					} else {
+						item.result.VersionsRemoved = append(item.result.VersionsRemoved, item.version)
+						item.result.SpaceFreed += spaceFreed
+						summary.TotalVersionsRemoved++
+						summary.TotalSpaceFreed += spaceFreed
+						if opts.Verbose {
+							fmt.Printf("  ✓ Removed %s/%s (%.2f MB)\n", item.pkgName, item.version, float64(spaceFreed)/(1024*1024))
+						}
+					}
+				}
+
+				// Remove orphaned wrappers
+				orphanedCount, err := c.removeOrphanedWrappers(reg)
+				if err == nil && orphanedCount > 0 {
+					summary.OrphanWrappersRemoved = orphanedCount
+					if opts.Verbose {
+						fmt.Printf("✓ Removed %d orphaned wrapper(s)\n", orphanedCount)
+					}
+				}
+			}
 		}
 	}
 
-	if len(toRemove) == 0 {
-		c.showCleanupResults(summary, opts.Verbose, false)
-		return summary, nil
-	}
-
-	// Show cleanup plan
-	c.showCleanupPlan(toRemove, opts.Verbose)
-
-	// Ask for confirmation if not --force
-	if !opts.Force && !opts.DryRun {
-		if !c.askForConfirmation(len(toRemove)) {
-			fmt.Println("Cleanup cancelled.")
-			return summary, nil
-		}
-	}
-
-	// If dry-run, stop here
-	if opts.DryRun {
-		return summary, nil
-	}
-
-	// Execute cleanup
-	for _, item := range toRemove {
-		spaceFreed, err := c.removeVersion(item.pkgName, item.version, storeManager)
+	// Cleanup AUR build cache and logs if requested
+	if opts.CleanupAUR {
+		aurSpaceFreed, aurBuildDirs, aurLogs, err := c.cleanupAUR(opts)
 		if err != nil {
 			if opts.Verbose {
-				fmt.Printf("  ✗ Failed to remove %s/%s: %v\n", item.pkgName, item.version, err)
+				fmt.Printf("⚠ Warning: AUR cleanup encountered error: %v\n", err)
 			}
-			item.result.Error = err
 		} else {
-			item.result.VersionsRemoved = append(item.result.VersionsRemoved, item.version)
-			item.result.SpaceFreed += spaceFreed
-			summary.TotalVersionsRemoved++
-			summary.TotalSpaceFreed += spaceFreed
-			if opts.Verbose {
-				fmt.Printf("  ✓ Removed %s/%s (%.2f MB)\n", item.pkgName, item.version, float64(spaceFreed)/(1024*1024))
-			}
-		}
-	}
-
-	// Remove orphaned wrappers
-	orphanedCount, err := c.removeOrphanedWrappers(reg)
-	if err == nil && orphanedCount > 0 {
-		summary.OrphanWrappersRemoved = orphanedCount
-		if opts.Verbose {
-			fmt.Printf("✓ Removed %d orphaned wrapper(s)\n", orphanedCount)
+			summary.AURSpaceFreed = aurSpaceFreed
+			summary.AURBuildDirsRemoved = aurBuildDirs
+			summary.AURLogsRemoved = aurLogs
 		}
 	}
 
 	// Show results
-	c.showCleanupResults(summary, opts.Verbose, len(toRemove) > 0)
+	c.showCleanupResults(summary, opts.Verbose, len(oldVersions) > 0 || opts.CleanupAUR)
 
 	return summary, nil
 }
 
+// cleanupAUR removes old AUR build cache directories and logs
+func (c *CleanupCommand) cleanupAUR(opts *CleanupOptions) (int64, int, int, error) {
+	buildCacheDir := filepath.Join(c.config.BaseDir, "build-cache")
+	logsDir := filepath.Join(c.config.BaseDir, "build-logs")
+
+	// Check if build cache dir exists before creating BuildManager
+	if _, err := os.Stat(buildCacheDir); os.IsNotExist(err) {
+		if opts.Verbose {
+			fmt.Println("\nNo AUR build cache to cleanup (directory not found)")
+		}
+		return 0, 0, 0, nil
+	}
+
+	buildMgr, err := build.NewBuildManager(buildCacheDir, logsDir)
+	if err != nil {
+		return 0, 0, 0, fmt.Errorf("failed to create build manager: %w", err)
+	}
+
+	var buildDirsRemoved, logsRemoved int
+	var spaceFreed int64
+
+	if opts.Verbose {
+		fmt.Println("\nCleaning AUR build cache and logs...")
+	}
+
+	// Count entries BEFORE cleanup for accurate reporting
+	buildEntriesBefore := 0
+	if entries, err := os.ReadDir(buildCacheDir); err == nil {
+		buildEntriesBefore = len(entries)
+	}
+
+	logEntriesBefore := 0
+	if entries, err := os.ReadDir(logsDir); err == nil {
+		for _, entry := range entries {
+			if filepath.Ext(entry.Name()) == ".log" {
+				logEntriesBefore++
+			}
+		}
+	}
+
+	// Cleanup build cache
+	if err := buildMgr.CleanupBuildArtifacts(opts.BuildCacheMaxAge); err != nil {
+		if opts.Verbose {
+			fmt.Printf("⚠ Warning: build cache cleanup encountered error: %v\n", err)
+		}
+		// Don't return error - continue with log cleanup
+	}
+
+	// Cleanup build logs
+	if err := buildMgr.CleanupBuildLogs(opts.BuildLogsMaxAge); err != nil {
+		if opts.Verbose {
+			fmt.Printf("⚠ Warning: build log cleanup encountered error: %v\n", err)
+		}
+		// Don't return error - we've already attempted cleanup
+	}
+
+	// Count entries AFTER cleanup for comparison
+	buildEntriesAfter := 0
+	if entries, err := os.ReadDir(buildCacheDir); err == nil {
+		buildEntriesAfter = len(entries)
+	}
+
+	logEntriesAfter := 0
+	if entries, err := os.ReadDir(logsDir); err == nil {
+		for _, entry := range entries {
+			if filepath.Ext(entry.Name()) == ".log" {
+				logEntriesAfter++
+			}
+		}
+	}
+
+	// Calculate what was removed
+	buildDirsRemoved = buildEntriesBefore - buildEntriesAfter
+	logsRemoved = logEntriesBefore - logEntriesAfter
+
+	// Calculate space freed
+	if buildCacheSize, err := buildMgr.GetBuildCacheSize(); err == nil {
+		spaceFreed = buildCacheSize
+	}
+
+	if opts.Verbose && (buildDirsRemoved > 0 || logsRemoved > 0) {
+		if buildDirsRemoved > 0 {
+			fmt.Printf("  ✓ Removed %d old build directory(ies)\n", buildDirsRemoved)
+		}
+		if logsRemoved > 0 {
+			fmt.Printf("  ✓ Removed %d old log file(s)\n", logsRemoved)
+		}
+		if spaceFreed > 0 {
+			fmt.Printf("  ✓ Freed %.2f MB from AUR cache\n", float64(spaceFreed)/(1024*1024))
+		}
+	}
+
+	return spaceFreed, buildDirsRemoved, logsRemoved, nil
+}
+
 // findOldVersions identifies versions that can be removed (keeps N most recent)
+
 func (c *CleanupCommand) findOldVersions(keepCount int) (map[string][]string, error) {
 	storeManager := store.NewStore(c.config.StoreRoot)
 
@@ -441,26 +564,45 @@ func (c *CleanupCommand) showCleanupPlan(toRemove []struct {
 func (c *CleanupCommand) showCleanupResults(summary *CleanupSummary, verbose bool, executed bool) {
 	if verbose || executed {
 		fmt.Println()
-		if summary.TotalVersionsRemoved > 0 {
+		hasResults := summary.TotalVersionsRemoved > 0 || summary.AURBuildDirsRemoved > 0 || summary.AURLogsRemoved > 0
+
+		if hasResults {
 			fmt.Printf("✓ Cleanup Summary:\n")
-			fmt.Printf("  Versions removed:     %d\n", summary.TotalVersionsRemoved)
-			fmt.Printf("  Space freed:          %.2f GB\n", float64(summary.TotalSpaceFreed)/(1024*1024*1024))
+			if summary.TotalVersionsRemoved > 0 {
+				fmt.Printf("  Package versions removed: %d\n", summary.TotalVersionsRemoved)
+				fmt.Printf("  Space freed:              %.2f GB\n", float64(summary.TotalSpaceFreed)/(1024*1024*1024))
+			}
 			if summary.VersionsSkipped > 0 {
-				fmt.Printf("  Versions skipped:     %d (still in use)\n", summary.VersionsSkipped)
+				fmt.Printf("  Versions skipped:         %d (still in use)\n", summary.VersionsSkipped)
 			}
 			if summary.OrphanWrappersRemoved > 0 {
-				fmt.Printf("  Orphaned wrappers:    %d\n", summary.OrphanWrappersRemoved)
+				fmt.Printf("  Orphaned wrappers:        %d\n", summary.OrphanWrappersRemoved)
+			}
+			if summary.AURBuildDirsRemoved > 0 || summary.AURLogsRemoved > 0 {
+				fmt.Printf("  AUR cleanup:\n")
+				if summary.AURBuildDirsRemoved > 0 {
+					fmt.Printf("    Build directories:       %d\n", summary.AURBuildDirsRemoved)
+				}
+				if summary.AURLogsRemoved > 0 {
+					fmt.Printf("    Log files:               %d\n", summary.AURLogsRemoved)
+				}
+				if summary.AURSpaceFreed > 0 {
+					fmt.Printf("    Space freed:             %.2f MB\n", float64(summary.AURSpaceFreed)/(1024*1024))
+				}
 			}
 		} else {
-			fmt.Println("✓ No versions needed cleanup")
+			fmt.Println("✓ No cleanup was needed")
 		}
 	} else {
-		if summary.TotalVersionsRemoved == 0 && summary.VersionsSkipped == 0 {
+		totalSpace := summary.TotalSpaceFreed + summary.AURSpaceFreed
+		totalRemoved := summary.TotalVersionsRemoved + summary.AURBuildDirsRemoved + summary.AURLogsRemoved
+
+		if totalRemoved == 0 && summary.VersionsSkipped == 0 {
 			fmt.Println("✓ All packages are at their current versions")
-		} else if summary.TotalVersionsRemoved > 0 {
-			fmt.Printf("✓ Cleanup complete: %d versions removed, %.2f GB freed\n",
-				summary.TotalVersionsRemoved,
-				float64(summary.TotalSpaceFreed)/(1024*1024*1024))
+		} else if totalRemoved > 0 {
+			fmt.Printf("✓ Cleanup complete: %d items removed, %.2f GB freed\n",
+				totalRemoved,
+				float64(totalSpace)/(1024*1024*1024))
 		}
 	}
 }

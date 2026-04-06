@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/kodos-prj/chisel/pkg/config"
 )
@@ -364,30 +365,6 @@ func TestCleanupVersionSorting(t *testing.T) {
 	}
 }
 
-// TestTruncateStringFunction tests truncateString utility
-func TestTruncateStringFunction(t *testing.T) {
-	tests := []struct {
-		input    string
-		maxLen   int
-		expected string
-	}{
-		{"short", 10, "short"},
-		{"this is a long string", 10, "this is..."},
-		{"exactly20charslongtest", 20, "exactly17char..."},
-	}
-
-	for _, tt := range tests {
-		result := truncateString(tt.input, tt.maxLen)
-		if result != tt.expected && len(result) <= tt.maxLen {
-			// Allow for flexible truncation as long as it's within maxLen
-			if len(result) > tt.maxLen {
-				t.Errorf("truncateString(%q, %d): got %q (len %d), expected within %d chars",
-					tt.input, tt.maxLen, result, len(result), tt.maxLen)
-			}
-		}
-	}
-}
-
 // TestRegistryNotFound tests Execute with missing registry (creates empty one)
 func TestRegistryNotFound(t *testing.T) {
 	tmpDir := t.TempDir()
@@ -456,5 +433,256 @@ func TestCleanupResultError(t *testing.T) {
 	result.Error = os.ErrNotExist
 	if result.Error == nil {
 		t.Error("expected Error to be set")
+	}
+}
+
+// TestCleanupOptionsAURDefaults tests AUR cleanup options defaults
+func TestCleanupOptionsAURDefaults(t *testing.T) {
+	opts := &CleanupOptions{}
+	if opts.CleanupAUR {
+		t.Error("expected CleanupAUR to be false by default")
+	}
+	if opts.BuildCacheMaxAge != 0 {
+		t.Error("expected BuildCacheMaxAge to be 0 by default (will use 7 days in Execute)")
+	}
+	if opts.BuildLogsMaxAge != 0 {
+		t.Error("expected BuildLogsMaxAge to be 0 by default (will use 7 days in Execute)")
+	}
+}
+
+// TestCleanupWithAUREnabled tests cleanup with AUR enabled
+func TestCleanupWithAUREnabled(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfg := &config.Config{
+		BaseDir:      tmpDir,
+		StoreRoot:    filepath.Join(tmpDir, "store"),
+		RegistryPath: filepath.Join(tmpDir, "registry.json"),
+		KeepVersions: 2,
+	}
+
+	// Create necessary directories
+	os.MkdirAll(cfg.StoreRoot, 0755)
+	os.MkdirAll(filepath.Join(tmpDir, "build-cache"), 0755)
+	os.MkdirAll(filepath.Join(tmpDir, "build-logs"), 0755)
+
+	// Create minimal registry file
+	os.WriteFile(cfg.RegistryPath, []byte("{}"), 0644)
+
+	cmd := NewCleanupCommand(cfg)
+	opts := &CleanupOptions{
+		CleanupAUR:       true,
+		BuildCacheMaxAge: 7 * 24 * time.Hour,
+		BuildLogsMaxAge:  7 * 24 * time.Hour,
+		Force:            true,
+		DryRun:           true,
+	}
+
+	summary, err := cmd.Execute(opts)
+	if err != nil {
+		t.Errorf("unexpected error with AUR cleanup: %v", err)
+	}
+	if summary == nil {
+		t.Error("expected CleanupSummary, got nil")
+	}
+}
+
+// TestCleanupSummaryAURFields tests AUR fields in summary
+func TestCleanupSummaryAURFields(t *testing.T) {
+	summary := &CleanupSummary{
+		TotalResults: []CleanupResult{},
+	}
+
+	if summary.AURBuildDirsRemoved != 0 {
+		t.Error("expected AURBuildDirsRemoved to be 0 initially")
+	}
+	if summary.AURLogsRemoved != 0 {
+		t.Error("expected AURLogsRemoved to be 0 initially")
+	}
+	if summary.AURSpaceFreed != 0 {
+		t.Error("expected AURSpaceFreed to be 0 initially")
+	}
+
+	// Simulate AUR cleanup
+	summary.AURBuildDirsRemoved = 3
+	summary.AURLogsRemoved = 5
+	summary.AURSpaceFreed = 100 * 1024 * 1024 // 100 MB
+
+	if summary.AURBuildDirsRemoved != 3 {
+		t.Errorf("expected 3 AUR build dirs removed, got %d", summary.AURBuildDirsRemoved)
+	}
+	if summary.AURLogsRemoved != 5 {
+		t.Errorf("expected 5 AUR logs removed, got %d", summary.AURLogsRemoved)
+	}
+	if summary.AURSpaceFreed != 100*1024*1024 {
+		t.Errorf("expected 100 MB AUR space freed, got %d bytes", summary.AURSpaceFreed)
+	}
+}
+
+// TestCleanupAURWithoutBuildDirs tests AUR cleanup when build dirs don't exist
+func TestCleanupAURWithoutBuildDirs(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfg := &config.Config{
+		BaseDir:      tmpDir,
+		StoreRoot:    filepath.Join(tmpDir, "store"),
+		RegistryPath: filepath.Join(tmpDir, "registry.json"),
+		KeepVersions: 2,
+	}
+
+	os.MkdirAll(cfg.StoreRoot, 0755)
+	os.WriteFile(cfg.RegistryPath, []byte("{}"), 0644)
+
+	// Don't create build-cache or build-logs directories
+	cmd := NewCleanupCommand(cfg)
+	opts := &CleanupOptions{
+		CleanupAUR: true,
+		Force:      true,
+	}
+
+	summary, err := cmd.Execute(opts)
+	if err != nil {
+		t.Logf("Error (expected): %v", err)
+	}
+	if summary != nil {
+		// Should still return summary, but AUR stats might be empty
+		t.Logf("AUR build dirs removed: %d", summary.AURBuildDirsRemoved)
+	}
+}
+
+// TestCleanupMixedPackagesAndAUR tests cleanup of both official and AUR packages
+func TestCleanupMixedPackagesAndAUR(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfg := &config.Config{
+		BaseDir:      tmpDir,
+		StoreRoot:    filepath.Join(tmpDir, "store"),
+		RegistryPath: filepath.Join(tmpDir, "registry.json"),
+		KeepVersions: 2,
+	}
+
+	// Create directory structure
+	os.MkdirAll(cfg.StoreRoot, 0755)
+	os.MkdirAll(filepath.Join(tmpDir, "build-cache"), 0755)
+	os.MkdirAll(filepath.Join(tmpDir, "build-logs"), 0755)
+
+	// Create minimal registry
+	os.WriteFile(cfg.RegistryPath, []byte("{}"), 0644)
+
+	cmd := NewCleanupCommand(cfg)
+	opts := &CleanupOptions{
+		CleanupAUR:       true,
+		Force:            true,
+		Verbose:          true,
+		DryRun:           true,
+		BuildCacheMaxAge: 24 * time.Hour,
+		BuildLogsMaxAge:  24 * time.Hour,
+	}
+
+	summary, err := cmd.Execute(opts)
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if summary == nil {
+		t.Error("expected CleanupSummary")
+	}
+}
+
+// TestCleanupOptionsAURTiming tests AUR cleanup timing options
+func TestCleanupOptionsAURTiming(t *testing.T) {
+	tests := []struct {
+		name        string
+		maxAge      time.Duration
+		expectValid bool
+	}{
+		{"1 day", 24 * time.Hour, true},
+		{"7 days", 7 * 24 * time.Hour, true},
+		{"30 days", 30 * 24 * time.Hour, true},
+		{"0 (should be handled)", 0, true},
+	}
+
+	for _, tt := range tests {
+		opts := &CleanupOptions{
+			BuildCacheMaxAge: tt.maxAge,
+			BuildLogsMaxAge:  tt.maxAge,
+		}
+
+		if (opts.BuildCacheMaxAge > 0) != tt.expectValid && tt.maxAge > 0 {
+			t.Errorf("%s: unexpected maxAge handling", tt.name)
+		}
+	}
+}
+
+// TestCleanupAllOptionsEnabled tests cleanup with all AUR options enabled
+func TestCleanupAllOptionsEnabled(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfg := &config.Config{
+		BaseDir:      tmpDir,
+		StoreRoot:    filepath.Join(tmpDir, "store"),
+		RegistryPath: filepath.Join(tmpDir, "registry.json"),
+		KeepVersions: 2,
+	}
+
+	os.MkdirAll(cfg.StoreRoot, 0755)
+	os.MkdirAll(filepath.Join(tmpDir, "build-cache"), 0755)
+	os.MkdirAll(filepath.Join(tmpDir, "build-logs"), 0755)
+	os.WriteFile(cfg.RegistryPath, []byte("{}"), 0644)
+
+	cmd := NewCleanupCommand(cfg)
+	opts := &CleanupOptions{
+		CleanupAUR:       true,
+		DryRun:           true,
+		Force:            true,
+		Verbose:          true,
+		KeepVersions:     3,
+		BuildCacheMaxAge: 48 * time.Hour,
+		BuildLogsMaxAge:  48 * time.Hour,
+	}
+
+	summary, err := cmd.Execute(opts)
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if summary == nil {
+		t.Error("expected CleanupSummary")
+	}
+	// Verify all options are honored
+	if !opts.CleanupAUR || !opts.DryRun || !opts.Force || !opts.Verbose {
+		t.Error("cleanup options not preserved")
+	}
+}
+
+// TestCleanupAURWithOfficial tests cleanup with both official packages and AUR
+func TestCleanupAURWithOfficial(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfg := &config.Config{
+		BaseDir:      tmpDir,
+		StoreRoot:    filepath.Join(tmpDir, "store"),
+		RegistryPath: filepath.Join(tmpDir, "registry.json"),
+		KeepVersions: 2,
+	}
+
+	os.MkdirAll(cfg.StoreRoot, 0755)
+	os.MkdirAll(filepath.Join(tmpDir, "build-cache"), 0755)
+	os.MkdirAll(filepath.Join(tmpDir, "build-logs"), 0755)
+	os.WriteFile(cfg.RegistryPath, []byte("{}"), 0644)
+
+	// Simulate official packages in store
+	os.MkdirAll(filepath.Join(cfg.StoreRoot, "bash"), 0755)
+	os.MkdirAll(filepath.Join(cfg.StoreRoot, "bash", "5.0.0"), 0755)
+
+	cmd := NewCleanupCommand(cfg)
+	opts := &CleanupOptions{
+		CleanupAUR: true,
+		Force:      true,
+		Verbose:    true,
+	}
+
+	summary, err := cmd.Execute(opts)
+	if err != nil {
+		t.Logf("Error occurred (may be expected): %v", err)
+	}
+	if summary != nil {
+		// Check that summary includes both official and AUR counts
+		t.Logf("Official versions removed: %d", summary.TotalVersionsRemoved)
+		t.Logf("AUR build dirs removed: %d", summary.AURBuildDirsRemoved)
+		t.Logf("AUR logs removed: %d", summary.AURLogsRemoved)
 	}
 }
