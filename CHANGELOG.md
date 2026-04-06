@@ -5,7 +5,7 @@ All notable changes to Chisel will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.1.0] - 2026-04-06
 
 ### Added
 - **AUR Package Support**: Full support for building and installing AUR (Arch User Repository) packages
@@ -25,6 +25,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Automatic detection of package source (official repo vs AUR)
   - Proper ordering of dependencies considering source constraints
   - Support for `--source=official` and `--source=aur` flags to restrict package sources
+
+- **Core package installation functionality**
+- **Official Arch Linux repository support**
+- **Basic dependency resolution**
+- **User-level package management**
+- **Symlink creation for package binaries**
+- **Registry tracking for installed packages**
 
 ### Fixed
 - **Database Parser**: Handle package versions with epoch (e.g., `1:1.3.2-3`)
@@ -61,13 +68,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Cache stored in `~/.local/share/chisel/cache/`
   - Build cache in `~/.local/share/chisel/build-cache/`
   - Build logs in `~/.local/share/chisel/build-logs/`
-
-## [0.1.0] - 2024-04-06
-
-### Initial Release
-- Core package installation functionality
-- Official Arch Linux repository support
-- Basic dependency resolution
-- User-level package management
-- Symlink creation for package binaries
-- Registry tracking for installed packages
