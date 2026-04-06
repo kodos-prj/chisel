@@ -15,7 +15,7 @@ import (
 // The database contains package directories, each with metadata files.
 // Returns a map of package names to Package objects.
 // Note: The data may be gzipped or uncompressed (curl/http.Client may auto-decompress)
-func parsePackageDatabase(data []byte, arch string) (map[string]*Package, error) {
+func parsePackageDatabase(data []byte, arch, repoName string) (map[string]*Package, error) {
 	var tr *tar.Reader
 
 	// Check if data is gzipped
@@ -85,6 +85,11 @@ func parsePackageDatabase(data []byte, arch string) (map[string]*Package, error)
 		pkg, err := parsePackageEntry(files, arch)
 		if err != nil {
 			continue // Skip packages that fail to parse
+		}
+
+		// Set repository name if not already set from descriptor
+		if pkg.Repository == "" {
+			pkg.Repository = repoName
 		}
 
 		// Only keep packages matching the architecture
@@ -257,7 +262,7 @@ func (c *Client) LoadCachedDatabase(repoName string) (*Database, error) {
 	}
 
 	// Parse database
-	packages, err := parsePackageDatabase(data, c.Arch)
+	packages, err := parsePackageDatabase(data, c.Arch, repoName)
 	if err != nil {
 		return nil, err
 	}
