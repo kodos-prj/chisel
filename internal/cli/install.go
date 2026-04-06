@@ -54,29 +54,54 @@ type InstallOptions struct {
 	NoExtract bool
 	NoSymlink bool
 	Force     bool
+	Source    string // "", "aur", or "official"
 }
 
 // Run executes the install command.
 // Usage: chisel install [options] <package> [package2] ...
 //
-//	--no-deps      Skip dependency resolution
-//	--no-extract   Skip extraction (assume already in store)
-//	--no-symlink   Skip symlink creation
-//	--force        Force overwrite of existing symlinks
+//	--source=aur        Install from AUR only (skip official repositories)
+//	--source=official   Install from official repositories only (skip AUR)
+//	--no-deps           Skip dependency resolution
+//	--no-extract        Skip extraction (assume already in store)
+//	--no-symlink        Skip symlink creation
+//	--force             Force overwrite of existing symlinks
+//
+// Source Constraint Behavior:
+//   - Root packages: Respect --source= constraint
+//   - Dependencies: Always auto-detect from both sources
+//   - Conflicts: Using both --source=aur and --source=official is an error
+//   - Default: Without --source=, official repos checked first, AUR as fallback
+//
+// Examples:
+//
+//	chisel install yay                     # Auto-detect (official first, then AUR)
+//	chisel install --source=aur yay        # AUR only
+//	chisel install --source=official firefox  # Official only
 func (i *InstallCommand) Run(args []string) error {
 	// Parse options and package names
-	opts := InstallOptions{}
+	opts := InstallOptions{Source: ""}
 	var pkgNames []string
 
 	for _, arg := range args {
-		switch arg {
-		case "--no-deps":
+		switch {
+		case strings.HasPrefix(arg, "--source="):
+			// Parse --source= flag
+			source := strings.TrimPrefix(arg, "--source=")
+			if source != "aur" && source != "official" {
+				return fmt.Errorf("invalid source: %s (must be 'aur' or 'official')", source)
+			}
+			if opts.Source != "" {
+				return fmt.Errorf("cannot specify multiple --source flags")
+			}
+			opts.Source = source
+		case arg == "--no-deps":
 			opts.NoDeps = true
-		case "--no-extract":
+		case arg == "--no-extract":
 			opts.NoExtract = true
-		case "--no-symlink":
+		case arg == "--no-symlink":
 			opts.NoSymlink = true
-		case "--force":
+		case arg == "--force":
 			opts.Force = true
 		default:
 			pkgNames = append(pkgNames, arg)
@@ -100,11 +125,15 @@ func (i *InstallCommand) Run(args []string) error {
 	}
 
 	// Resolve package dependencies using MixedResolver (official + AUR)
-	fmt.Println("Resolving package dependencies...")
+	if opts.Source != "" {
+		fmt.Printf("Resolving package dependencies (%s only)...\n", opts.Source)
+	} else {
+		fmt.Println("Resolving package dependencies...")
+	}
 	resolver := build.NewMixedResolver(client, i.config.AlpmDBPath)
 	defer resolver.Close()
 
-	toInstall, err := i.resolveMixedDependencies(resolver, pkgNames, opts.NoDeps)
+	toInstall, err := i.resolveMixedDependencies(resolver, pkgNames, opts.NoDeps, opts.Source)
 	if err != nil {
 		return fmt.Errorf("failed to resolve dependencies: %w", err)
 	}
@@ -543,23 +572,32 @@ func (i *InstallCommand) resolveDependenciesWithMap(client *alpm.ALPMClient, pkg
 
 // resolveMixedDependencies resolves dependencies using MixedResolver (official + AUR)
 // Returns packages to install in proper order, handling both official and AUR packages
-func (i *InstallCommand) resolveMixedDependencies(resolver *build.MixedResolver, pkgNames []string, skipDeps bool) ([]download.PackageInfo, error) {
+func (i *InstallCommand) resolveMixedDependencies(resolver *build.MixedResolver, pkgNames []string, skipDeps bool, sourceConstraint string) ([]download.PackageInfo, error) {
 	var toInstall []download.PackageInfo
 	visited := make(map[string]bool)
 
-	for _, pkgName := range pkgNames {
+	for idx, pkgName := range pkgNames {
 		var pkgSources []build.PackageSource
 		var err error
 
+		// Only apply source constraint to root packages (first package in each call)
+		isRootPackage := idx == 0
+
 		if skipDeps {
 			// ResolveDependencies will return just the package itself if no deps
-			pkgSources, err = resolver.ResolveDependencies(pkgName)
+			pkgSources, err = resolver.ResolveDependencies(pkgName, isRootPackage, sourceConstraint)
 		} else {
 			// Get full dependency tree from MixedResolver (official + AUR, recursive)
-			pkgSources, err = resolver.ResolveDependencies(pkgName)
+			pkgSources, err = resolver.ResolveDependencies(pkgName, isRootPackage, sourceConstraint)
 		}
 
 		if err != nil {
+			// Provide helpful error message if source constraint was used
+			if sourceConstraint == "aur" {
+				return nil, fmt.Errorf("package '%s' not found in AUR\nHint: Use 'chisel install %s' to search both sources", pkgName, pkgName)
+			} else if sourceConstraint == "official" {
+				return nil, fmt.Errorf("package '%s' not found in official repositories\nHint: Use 'chisel install %s' to search both sources", pkgName, pkgName)
+			}
 			return nil, fmt.Errorf("failed to resolve %s: %w", pkgName, err)
 		}
 
@@ -568,7 +606,7 @@ func (i *InstallCommand) resolveMixedDependencies(resolver *build.MixedResolver,
 		}
 
 		// Add resolved packages to install list
-		for _, pkgSource := range pkgSources {
+		for pkgIdx, pkgSource := range pkgSources {
 			if visited[pkgSource.Name] {
 				continue // Skip if already added
 			}
@@ -590,11 +628,14 @@ func (i *InstallCommand) resolveMixedDependencies(resolver *build.MixedResolver,
 					Version: pkgSource.Version,
 					Repo:    pkgSource.Repo,
 				})
-				fmt.Printf("  + %s/%s (official)\n", pkgSource.Name, pkgSource.Version)
+				// Show constraint indicator only for root package
+				if isRootPackage && pkgIdx == 0 && sourceConstraint != "" {
+					fmt.Printf("  + %s/%s (official - forced by --source=%s)\n", pkgSource.Name, pkgSource.Version, sourceConstraint)
+				} else {
+					fmt.Printf("  + %s/%s (official)\n", pkgSource.Name, pkgSource.Version)
+				}
 			} else if pkgSource.Source == "aur" {
 				// AUR package - needs to be built
-				fmt.Printf("  + %s/%s (AUR - will be built)\n", pkgSource.Name, pkgSource.Version)
-
 				// For AUR packages, we still add them to the install list
 				// but mark them as AUR so we know to build them
 				toInstall = append(toInstall, download.PackageInfo{
@@ -602,6 +643,12 @@ func (i *InstallCommand) resolveMixedDependencies(resolver *build.MixedResolver,
 					Version: pkgSource.Version,
 					Repo:    "aur", // Special marker for AUR packages
 				})
+				// Show constraint indicator only for root package
+				if isRootPackage && pkgIdx == 0 && sourceConstraint != "" {
+					fmt.Printf("  + %s/%s (AUR - will be built - forced by --source=%s)\n", pkgSource.Name, pkgSource.Version, sourceConstraint)
+				} else {
+					fmt.Printf("  + %s/%s (AUR - will be built)\n", pkgSource.Name, pkgSource.Version)
+				}
 			}
 		}
 	}
