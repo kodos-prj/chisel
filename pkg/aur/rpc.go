@@ -28,7 +28,7 @@ type RPCClient struct {
 // NewRPCClient creates a new AUR RPC client
 func NewRPCClient() *RPCClient {
 	return &RPCClient{
-		baseURL: "https://aur.archlinux.org/rpc/v5",
+		baseURL: "https://aur.archlinux.org/rpc",
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
