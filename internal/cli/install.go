@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -28,7 +29,9 @@ type InstallCommand struct {
 
 // NewInstallCommand creates a new install command.
 func NewInstallCommand(cfg *config.Config) *InstallCommand {
-	buildMgr, _ := build.NewBuildManager("/kod/build-cache/", "/kod/build-logs/")
+	buildCacheDir := filepath.Join(cfg.BaseDir, "build-cache")
+	buildLogsDir := filepath.Join(cfg.BaseDir, "build-logs")
+	buildMgr, _ := build.NewBuildManager(buildCacheDir, buildLogsDir)
 	return &InstallCommand{
 		config:     cfg,
 		symlinkDir: "",
@@ -39,7 +42,9 @@ func NewInstallCommand(cfg *config.Config) *InstallCommand {
 
 // NewInstallCommandWithSymlinkDir creates a new install command with a symlink directory.
 func NewInstallCommandWithSymlinkDir(cfg *config.Config, symlinkDir string) *InstallCommand {
-	buildMgr, _ := build.NewBuildManager("/kod/build-cache/", "/kod/build-logs/")
+	buildCacheDir := filepath.Join(cfg.BaseDir, "build-cache")
+	buildLogsDir := filepath.Join(cfg.BaseDir, "build-logs")
+	buildMgr, _ := build.NewBuildManager(buildCacheDir, buildLogsDir)
 	return &InstallCommand{
 		config:     cfg,
 		symlinkDir: symlinkDir,
@@ -156,27 +161,79 @@ func (i *InstallCommand) Run(args []string) error {
 	}
 	extractedFilesMap := make(map[string]map[string]PackageFiles) // pkgName -> version -> PackageFiles
 
-	// Download packages
+	// Separate AUR and official packages
+	var aurPackages []download.PackageInfo
+	var officialPackages []download.PackageInfo
+	for _, pkg := range toInstall {
+		if pkg.Repo == "aur" {
+			aurPackages = append(aurPackages, pkg)
+		} else {
+			officialPackages = append(officialPackages, pkg)
+		}
+	}
+
+	// Download and build packages
 	if !opts.NoExtract {
-		fmt.Println("\nDownloading packages...")
-		downloader := download.NewDownloader(
-			i.config.MirrorURL,
-			i.config.CachePath,
-			i.config.Architecture,
-			i.config.MaxConcurrentDownloads,
-			0,
-		)
+		// Build AUR packages
+		if len(aurPackages) > 0 {
+			fmt.Println("\nBuilding AUR packages...")
+			gitHandler := aur.NewGitHandler(i.config.CachePath)
 
-		results, err := downloader.DownloadPackages(toInstall)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Download warnings: %v\n", err)
+			for _, pkg := range aurPackages {
+				fmt.Printf("Building %s/%s...\n", pkg.Name, pkg.Version)
+
+				// Clone PKGBUILD
+				pkgbuildDir, err := gitHandler.ClonePKGBUILD(pkg.Name, i.config.CachePath)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "✗ Failed to clone PKGBUILD for %s: %v\n", pkg.Name, err)
+					continue
+				}
+
+				// Build the package (pass directory path, not file path)
+				builtPkg, err := i.buildMgr.BuildAURPackage(pkg.Name, pkg.Version, pkgbuildDir)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "✗ Failed to build %s: %v\n", pkg.Name, err)
+					continue
+				}
+
+				fmt.Printf("  ✓ Built %s\n", builtPkg)
+
+				// Copy built package from build cache to regular cache
+				fileName := fmt.Sprintf("%s-%s-x86_64.pkg.tar.zst", pkg.Name, pkg.Version)
+				cachePath := filepath.Join(i.config.CachePath, fileName)
+
+				// Get file size for progress reporting
+				fileInfo, err := os.Stat(builtPkg)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "✗ Failed to get package size: %v\n", err)
+					continue
+				}
+
+				if err := copyFileWithProgress(builtPkg, cachePath, fileInfo.Size()); err != nil {
+					fmt.Fprintf(os.Stderr, "✗ Failed to copy built package to cache: %v\n", err)
+					continue
+				}
+			}
 		}
 
-		if len(results) == 0 {
-			return fmt.Errorf("no packages were successfully downloaded")
-		}
+		// Download official packages
+		if len(officialPackages) > 0 {
+			fmt.Println("\nDownloading packages...")
+			downloader := download.NewDownloader(
+				i.config.MirrorURL,
+				i.config.CachePath,
+				i.config.Architecture,
+				i.config.MaxConcurrentDownloads,
+				0,
+			)
 
-		fmt.Printf("✓ Downloaded %d/%d package(s)\n", len(results), len(toInstall))
+			results, err := downloader.DownloadPackages(officialPackages)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Download warnings: %v\n", err)
+			}
+
+			fmt.Printf("✓ Downloaded %d/%d official package(s)\n", len(results), len(officialPackages))
+		}
 
 		// Extract packages
 		fmt.Println("\nExtracting packages...")
@@ -193,6 +250,9 @@ func (i *InstallCommand) Run(args []string) error {
 				continue
 			}
 
+			// Show extraction progress
+			fmt.Printf("  Extracting %s/%s...\n", pkgInfo.Name, pkgInfo.Version)
+
 			// Extract package
 			extractedFileObjs, err := storeManager.ExtractPackage(cachePath, pkgInfo.Name, pkgInfo.Version)
 			if err != nil {
@@ -200,7 +260,7 @@ func (i *InstallCommand) Run(args []string) error {
 				continue
 			}
 
-			fmt.Printf("  ✓ Extracted %d files\n", len(extractedFileObjs))
+			fmt.Printf("    ✓ Extracted %d files\n", len(extractedFileObjs))
 
 			// Process extracted files
 			if _, exists := extractedFilesMap[pkgInfo.Name]; !exists {
@@ -568,6 +628,108 @@ func (i *InstallCommand) resolveDependenciesWithMap(client *alpm.ALPMClient, pkg
 	}
 
 	return toInstall, depMap, nil
+}
+
+// copyFile copies a file from src to dst
+func copyFile(src, dst string) error {
+	srcData, err := os.ReadFile(src)
+	if err != nil {
+		return fmt.Errorf("failed to read source file: %w", err)
+	}
+
+	// Create parent directories if needed
+	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
+		return fmt.Errorf("failed to create destination directory: %w", err)
+	}
+
+	if err := os.WriteFile(dst, srcData, 0644); err != nil {
+		return fmt.Errorf("failed to write destination file: %w", err)
+	}
+
+	return nil
+}
+
+// copyFileWithProgress copies a file from src to dst with progress indication
+func copyFileWithProgress(src, dst string, fileSize int64) error {
+	// Create parent directories if needed
+	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
+		return fmt.Errorf("failed to create destination directory: %w", err)
+	}
+
+	// Open source file
+	srcFile, err := os.Open(src)
+	if err != nil {
+		return fmt.Errorf("failed to open source file: %w", err)
+	}
+	defer srcFile.Close()
+
+	// Create destination file
+	dstFile, err := os.Create(dst)
+	if err != nil {
+		return fmt.Errorf("failed to create destination file: %w", err)
+	}
+	defer dstFile.Close()
+
+	// Create a custom progress writer
+	progressWriter := &ProgressWriter{
+		Total:    fileSize,
+		FileName: filepath.Base(src),
+	}
+
+	// Copy with progress tracking
+	_, err = io.Copy(dstFile, io.TeeReader(srcFile, progressWriter))
+	if err != nil {
+		return fmt.Errorf("failed to copy file: %w", err)
+	}
+
+	fmt.Println() // New line after progress
+	return nil
+}
+
+// ProgressWriter tracks and displays copy progress
+type ProgressWriter struct {
+	Total     int64
+	Written   int64
+	FileName  string
+	LastPrint time.Time
+}
+
+// Write implements io.Writer and tracks progress
+func (pw *ProgressWriter) Write(p []byte) (n int, err error) {
+	n = len(p)
+	pw.Written += int64(n)
+
+	// Print progress every 100ms or when complete
+	now := time.Now()
+	if now.Sub(pw.LastPrint) >= 100*time.Millisecond || pw.Written >= pw.Total {
+		pw.printProgress()
+		pw.LastPrint = now
+	}
+
+	return n, nil
+}
+
+// printProgress prints the current progress
+func (pw *ProgressWriter) printProgress() {
+	if pw.Total <= 0 {
+		return
+	}
+
+	percent := (pw.Written * 100) / pw.Total
+	mbWritten := float64(pw.Written) / (1024 * 1024)
+	mbTotal := float64(pw.Total) / (1024 * 1024)
+
+	// Calculate speed
+	elapsed := time.Since(pw.LastPrint)
+	var speed string
+	if elapsed > 0 {
+		bytesPerSec := float64(pw.Written) / elapsed.Seconds()
+		speed = fmt.Sprintf("%.1fMB/s", bytesPerSec/(1024*1024))
+	}
+
+	// Print progress on same line
+	fmt.Fprintf(os.Stderr, "\rCopying %s... %d%% (%.1fMB/%.1fMB) %s",
+		pw.FileName, percent, mbWritten, mbTotal, speed)
 }
 
 // resolveMixedDependencies resolves dependencies using MixedResolver (official + AUR)
