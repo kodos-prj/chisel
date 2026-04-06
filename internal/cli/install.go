@@ -379,13 +379,22 @@ func (i *InstallCommand) Run(args []string) error {
 		var dependencies []string
 		// TODO: Track dependencies from MixedResolver in future optimization
 
+		// Determine source: official repo or AUR
+		source := "official"
+		if pkg.Repo == "aur" {
+			source = "aur"
+		}
+
 		regPkg := &registry.Package{
 			Name:         pkg.Name,
 			Version:      pkg.Version,
+			Source:       source,
+			Repository:   pkg.Repo,
 			Files:        files,
 			Executables:  executables,
 			Dependencies: dependencies,
 			InstallDate:  time.Now().Format(time.RFC3339),
+			UpdateDate:   time.Now().Format(time.RFC3339),
 		}
 
 		if err := reg.AddPackage(regPkg); err != nil {
