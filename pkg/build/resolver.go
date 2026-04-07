@@ -4,11 +4,69 @@ package build
 
 import (
 	"fmt"
+	"regexp"
 	"sync"
 
 	"github.com/kodos-prj/chisel/pkg/alpm"
 	"github.com/kodos-prj/chisel/pkg/aur"
 )
+
+// parsePackageName extracts the package name from a dependency string.
+// Dependency strings may contain version constraints like ">=", "<=", "=", "<", ">", "=="
+// Examples:
+//
+//	"linux-api-headers>=4.10" → "linux-api-headers"
+//	"glibc" → "glibc"
+//	"ncurses<5" → "ncurses"
+//	"bash>=5.0" → "bash"
+func parsePackageName(dep string) string {
+	// Match operators: >=, <=, ==, =, >, <
+	operatorRegex := regexp.MustCompile(`(>=|<=|==|=|>|<)`)
+	parts := operatorRegex.Split(dep, 2)
+	if len(parts) > 0 {
+		return parts[0]
+	}
+	return dep
+}
+
+// parseVersionConstraint extracts version constraint from a dependency string.
+// Returns (operator, version) where operator is >=, <=, =, etc.
+// Returns ("", "") if no constraint is present.
+func parseVersionConstraint(dep string) (string, string) {
+	operatorRegex := regexp.MustCompile(`(>=|<=|==|=|>|<)(.+)`)
+	matches := operatorRegex.FindStringSubmatch(dep)
+	if len(matches) >= 3 {
+		return matches[1], matches[2]
+	}
+	return "", ""
+}
+
+// satisfiesVersionConstraint checks if a version satisfies a constraint.
+// Returns true if version satisfies the constraint, or if no constraint is present.
+func satisfiesVersionConstraint(version, operator, constraintVersion string) bool {
+	if operator == "" {
+		// No constraint, always satisfied
+		return true
+	}
+
+	cmp := alpm.VerCmp(version, constraintVersion)
+
+	switch operator {
+	case ">=":
+		return cmp >= 0
+	case ">":
+		return cmp > 0
+	case "<=":
+		return cmp <= 0
+	case "<":
+		return cmp < 0
+	case "=", "==":
+		return cmp == 0
+	default:
+		// Unknown operator, assume satisfied
+		return true
+	}
+}
 
 // PackageSource represents a package from either official repos or AUR
 type PackageSource struct {
@@ -87,16 +145,17 @@ func (mr *MixedResolver) ResolveDependencies(pkgName string, isRootPackage bool,
 func (mr *MixedResolver) resolveDependenciesRecursive(pkgName string, result *[]PackageSource, isRootPackage bool, sourceConstraint string) error {
 	mr.mu.Lock()
 
-	// Check for cycles
-	if mr.resolving[pkgName] {
-		mr.mu.Unlock()
-		cycle := mr.buildCyclePath(pkgName)
-		return fmt.Errorf("circular dependency detected: %s", cycle)
-	}
-
-	// Check if already visited
+	// Check if already visited (successfully resolved)
 	if mr.visited[pkgName] {
 		mr.mu.Unlock()
+		return nil
+	}
+
+	// Check for cycles (package trying to resolve itself)
+	if mr.resolving[pkgName] {
+		mr.mu.Unlock()
+		// Cycle detected - this is allowed in real Arch databases
+		// Skip to prevent infinite loops
 		return nil
 	}
 
@@ -123,8 +182,10 @@ func (mr *MixedResolver) resolveDependenciesRecursive(pkgName string, result *[]
 	if err == nil && officialPkg != nil {
 		// Found in official repos, resolve its dependencies
 		for _, dep := range officialPkg.Depends {
+			// Parse the package name from the dependency string (strip version constraints)
+			depName := parsePackageName(dep)
 			// Dependencies always auto-detect (isRootPackage=false, sourceConstraint="")
-			if err := mr.resolveDependenciesRecursive(dep, result, false, ""); err != nil {
+			if err := mr.resolveDependenciesRecursive(depName, result, false, ""); err != nil {
 				return err
 			}
 		}
@@ -147,8 +208,10 @@ func (mr *MixedResolver) resolveDependenciesRecursive(pkgName string, result *[]
 	// Resolve AUR dependencies (both runtime and build-time)
 	allDeps := append(aurPkg.Depends, aurPkg.MakeDepends...)
 	for _, dep := range allDeps {
+		// Parse the package name from the dependency string (strip version constraints)
+		depName := parsePackageName(dep)
 		// Dependencies always auto-detect (isRootPackage=false, sourceConstraint="")
-		if err := mr.resolveDependenciesRecursive(dep, result, false, ""); err != nil {
+		if err := mr.resolveDependenciesRecursive(depName, result, false, ""); err != nil {
 			return err
 		}
 	}
@@ -189,7 +252,9 @@ func (mr *MixedResolver) resolveSingleSource(pkgName string, result *[]PackageSo
 
 		// Resolve dependencies (always auto-detect for dependencies)
 		for _, dep := range officialPkg.Depends {
-			if err := mr.resolveDependenciesRecursive(dep, result, false, ""); err != nil {
+			// Parse the package name from the dependency string (strip version constraints)
+			depName := parsePackageName(dep)
+			if err := mr.resolveDependenciesRecursive(depName, result, false, ""); err != nil {
 				return err
 			}
 		}
@@ -211,7 +276,9 @@ func (mr *MixedResolver) resolveSingleSource(pkgName string, result *[]PackageSo
 		// Resolve dependencies (always auto-detect for dependencies)
 		allDeps := append(aurPkg.Depends, aurPkg.MakeDepends...)
 		for _, dep := range allDeps {
-			if err := mr.resolveDependenciesRecursive(dep, result, false, ""); err != nil {
+			// Parse the package name from the dependency string (strip version constraints)
+			depName := parsePackageName(dep)
+			if err := mr.resolveDependenciesRecursive(depName, result, false, ""); err != nil {
 				return err
 			}
 		}
@@ -226,6 +293,8 @@ func (mr *MixedResolver) resolveSingleSource(pkgName string, result *[]PackageSo
 }
 
 // findOfficialPackage looks up a package in official repositories
+// It first tries direct name match, then checks if any package provides the requested name
+// This handles both regular packages and virtual packages (e.g., libncursesw.so provided by ncurses)
 func (mr *MixedResolver) findOfficialPackage(pkgName string) (*PackageSource, error) {
 	if mr.alpClient == nil {
 		// No ALPM client available, package not in official repos
@@ -233,20 +302,36 @@ func (mr *MixedResolver) findOfficialPackage(pkgName string) (*PackageSource, er
 	}
 
 	pkgInfo, err := mr.alpClient.GetPackageInfo(pkgName)
-	if err != nil {
-		// Package not found in official repos
-		return nil, nil
+	if err == nil && pkgInfo != nil {
+		return &PackageSource{
+			Name:       pkgInfo.Name,
+			Version:    pkgInfo.Version,
+			Source:     "official",
+			Repo:       pkgInfo.Repository,
+			IsAUR:      false,
+			Depends:    pkgInfo.DependsOn,
+			OptDepends: pkgInfo.OptDepends,
+		}, nil
 	}
 
-	return &PackageSource{
-		Name:       pkgInfo.Name,
-		Version:    pkgInfo.Version,
-		Source:     "official",
-		Repo:       pkgInfo.Repository,
-		IsAUR:      false,
-		Depends:    pkgInfo.DependsOn,
-		OptDepends: pkgInfo.OptDepends,
-	}, nil
+	// Direct package not found, check if any package provides this virtual package
+	providingPkgs := mr.alpClient.GetProvidingPackages(pkgName)
+	if len(providingPkgs) > 0 {
+		// Use the first providing package
+		pkg := providingPkgs[0]
+		return &PackageSource{
+			Name:       pkg.Name,
+			Version:    pkg.Version,
+			Source:     "official",
+			Repo:       pkg.Repository,
+			IsAUR:      false,
+			Depends:    pkg.DependsOn,
+			OptDepends: pkg.OptDepends,
+		}, nil
+	}
+
+	// Package not found in official repos
+	return nil, nil
 }
 
 // findAURPackage looks up a package in the AUR

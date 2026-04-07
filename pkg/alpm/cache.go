@@ -5,6 +5,7 @@ func NewDatabaseCache() *DatabaseCache {
 	return &DatabaseCache{
 		packages:     make(map[string]*Package),
 		provides:     make(map[string][]*Package),
+		groups:       make(map[string][]*Package),
 		databases:    []*Database{},
 		repoPriority: DefaultRepositoryPriority,
 	}
@@ -44,6 +45,11 @@ func (dc *DatabaseCache) AddDatabase(db *Database) {
 	// Merge provides mappings
 	for provName, packages := range db.Provides {
 		dc.provides[provName] = append(dc.provides[provName], packages...)
+	}
+
+	// Merge groups mappings
+	for groupName, packages := range db.Groups {
+		dc.groups[groupName] = append(dc.groups[groupName], packages...)
 	}
 }
 
@@ -92,4 +98,25 @@ func (dc *DatabaseCache) PackageCount() int {
 	defer dc.mu.RUnlock()
 
 	return len(dc.packages)
+}
+
+// GetPackagesByGroup returns all packages in a given group.
+// Returns an empty slice if the group doesn't exist.
+func (dc *DatabaseCache) GetPackagesByGroup(groupName string) []*Package {
+	dc.mu.RLock()
+	defer dc.mu.RUnlock()
+
+	return dc.groups[groupName]
+}
+
+// ListAllGroups returns all group names in the cache.
+func (dc *DatabaseCache) ListAllGroups() []string {
+	dc.mu.RLock()
+	defer dc.mu.RUnlock()
+
+	groups := make([]string, 0, len(dc.groups))
+	for groupName := range dc.groups {
+		groups = append(groups, groupName)
+	}
+	return groups
 }

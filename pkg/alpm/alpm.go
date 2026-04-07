@@ -204,3 +204,35 @@ func (c *ALPMClient) GetDownloadURL(pkg *Package, mirrorURL string) string {
 func (c *ALPMClient) GetImpl() interface{} {
 	return c.impl
 }
+
+// SearchPackagesByGroup returns all packages in a given group.
+// Returns an empty slice if the group doesn't exist.
+func (c *ALPMClient) SearchPackagesByGroup(groupName string) []*Package {
+	if c.isGoImpl {
+		client := c.impl.(*Client)
+		return client.SearchPackagesByGroup(groupName)
+	}
+	return nil
+}
+
+// ListAllGroups returns all package group names from all databases.
+func (c *ALPMClient) ListAllGroups() []string {
+	if c.isGoImpl {
+		client := c.impl.(*Client)
+		return client.ListAllGroups()
+	}
+	return nil
+}
+
+// GetProvidingPackages returns packages that provide a virtual package name.
+// Virtual packages are packages specified in the "Provides" field of other packages.
+// For example, libncursesw.so is provided by the ncurses package.
+func (c *ALPMClient) GetProvidingPackages(virtualPkg string) []*Package {
+	if c.isGoImpl {
+		client := c.impl.(*Client)
+		if client.Cache != nil {
+			return client.Cache.GetProvidingPackages(virtualPkg)
+		}
+	}
+	return nil
+}

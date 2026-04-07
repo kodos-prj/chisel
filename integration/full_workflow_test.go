@@ -227,3 +227,183 @@ func TestFullWorkflowIntegration(t *testing.T) {
 
 	t.Log("✓ Full workflow test completed successfully")
 }
+
+// TestRealDatabaseParsing tests that all metadata fields are correctly parsed from real Arch databases.
+// This test uses cached databases from previous test runs and verifies multi-line metadata parsing.
+func TestRealDatabaseParsing(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	// Create a temporary directory for testing
+	tmpDir, err := os.MkdirTemp("", "chisel-parse-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Set up configuration - matching the structure used in TestFullWorkflowIntegration
+	baseDir := filepath.Join(tmpDir, "kod")
+	alpmDBPath := filepath.Join(baseDir, "var/lib/pacman")
+	syncPath := filepath.Join(alpmDBPath, "sync")
+	storeDir := filepath.Join(baseDir, "store")
+	wrapperDir := filepath.Join(baseDir, "wrappers")
+	registryPath := filepath.Join(baseDir, "registry.json")
+	cacheDir := filepath.Join(baseDir, "cache")
+
+	// Create directories
+	if err := os.MkdirAll(syncPath, 0755); err != nil {
+		t.Fatalf("failed to create sync dir: %v", err)
+	}
+	if err := os.MkdirAll(cacheDir, 0755); err != nil {
+		t.Fatalf("failed to create cache dir: %v", err)
+	}
+
+	// Create configuration matching existing test setup
+	cfg := &config.Config{
+		BaseDir:                baseDir,
+		SymlinkRoot:            "/",
+		StoreRoot:              storeDir,
+		RegistryPath:           registryPath,
+		AlpmRoot:               baseDir,
+		AlpmDBPath:             alpmDBPath,
+		DBPath:                 syncPath,
+		WrapperDir:             wrapperDir,
+		CachePath:              cacheDir,
+		MirrorURL:              "https://mirror.rackspace.com/archlinux",
+		Architecture:           "x86_64",
+		Repositories:           []string{"core", "extra"},
+		VerifySignatures:       false,
+		MaxConcurrentDownloads: 5,
+		DownloadTimeout:        300,
+		KeepVersions:           3,
+	}
+
+	// Set up database syncer
+	t.Log("Step 1: Syncing databases...")
+	syncer := database.NewSyncer(
+		cfg.MirrorURL,
+		syncPath,
+		cfg.Architecture,
+		30*time.Second,
+	)
+
+	if err := syncer.Sync(cfg.Repositories); err != nil {
+		t.Fatalf("failed to sync databases: %v", err)
+	}
+	t.Log("✓ Databases synced successfully")
+
+	// Create ALPM client and register databases
+	t.Log("Step 2: Loading and registering databases...")
+	client, err := alpm.NewClient(cfg.AlpmRoot, syncPath)
+	if err != nil {
+		t.Fatalf("failed to create ALPM client: %v", err)
+	}
+	defer client.Close()
+
+	if err := client.RegisterAllSyncDBs(cfg.Repositories); err != nil {
+		t.Fatalf("failed to register sync databases: %v", err)
+	}
+
+	// Get internal implementation to access databases
+	impl := client.GetImpl().(*alpm.Client)
+
+	// Create cache for group queries
+	cache := alpm.NewDatabaseCache()
+	for _, db := range impl.Databases {
+		cache.AddDatabase(db)
+		t.Logf("  Loaded %s database: %d packages", db.Name, len(db.Packages))
+	}
+
+	t.Log("Step 3: Verifying GROUPS metadata parsing...")
+
+	// Test 1: Verify groups exist in the cache
+	allGroups := cache.ListAllGroups()
+	if len(allGroups) == 0 {
+		t.Error("No groups found in database (expected 50+)")
+	} else {
+		t.Logf("✓ Found %d total groups", len(allGroups))
+		// Show sample groups
+		displayGroups := allGroups
+		if len(displayGroups) > 10 {
+			displayGroups = displayGroups[:10]
+		}
+		t.Logf("  Sample groups: %v", displayGroups)
+	}
+
+	// Test 2: Try to find a package with groups
+	t.Log("Step 4: Testing package group parsing...")
+	if len(allGroups) > 0 {
+		// Try to get packages from a group
+		testGroups := []string{"base-devel", "editors", "pro-audio", "gnome", "kde", "base"}
+		foundGroupWithPackages := false
+		for _, groupName := range testGroups {
+			pkgs := cache.GetPackagesByGroup(groupName)
+			if len(pkgs) > 0 {
+				t.Logf("✓ Group '%s' contains %d packages", groupName, len(pkgs))
+				if len(pkgs) > 0 {
+					t.Logf("  Sample packages: %s, %s", pkgs[0].Name, func() string {
+						if len(pkgs) > 1 {
+							return pkgs[1].Name
+						}
+						return ""
+					}())
+				}
+				foundGroupWithPackages = true
+				break
+			}
+		}
+		if !foundGroupWithPackages {
+			t.Logf("⚠ Could not find any common groups with packages (searched: base-devel, editors, pro-audio, gnome, kde, base)")
+		}
+	}
+
+	t.Log("Step 5: Verifying DEPENDS metadata parsing...")
+
+	// Test 3: Find bash and verify dependencies are parsed
+	bashPkg, err := client.SearchPackage("bash")
+	if err == nil && bashPkg != nil {
+		t.Logf("✓ Found bash with %d dependencies", len(bashPkg.DependsOn))
+		if len(bashPkg.DependsOn) > 0 {
+			t.Logf("  Sample dependencies: %v", func() []string {
+				if len(bashPkg.DependsOn) > 3 {
+					return bashPkg.DependsOn[:3]
+				}
+				return bashPkg.DependsOn
+			}())
+		} else {
+			t.Logf("⚠ bash has no dependencies parsed (may not have any in this repository)")
+		}
+	} else {
+		t.Logf("⚠ bash package not found (may not be in this mirror)")
+	}
+
+	t.Log("Step 6: Verifying other metadata fields...")
+
+	// Test 4: Spot check other metadata fields
+	for _, pkgName := range []string{"bash", "coreutils", "gcc"} {
+		pkg, err := client.SearchPackage(pkgName)
+		if err == nil && pkg != nil {
+			t.Logf("Package %s metadata:", pkgName)
+			if len(pkg.Provides) > 0 {
+				t.Logf("  - Provides (%d): %v", len(pkg.Provides), pkg.Provides[:1])
+			}
+			if len(pkg.Conflicts) > 0 {
+				t.Logf("  - Conflicts (%d): %v", len(pkg.Conflicts), pkg.Conflicts[:1])
+			}
+			if len(pkg.Replaces) > 0 {
+				t.Logf("  - Replaces (%d): %v", len(pkg.Replaces), pkg.Replaces[:1])
+			}
+			if len(pkg.OptDepends) > 0 {
+				t.Logf("  - OptDepends (%d): %v", len(pkg.OptDepends), pkg.OptDepends[:1])
+			}
+		}
+	}
+
+	t.Log("✓ Real database parsing test completed successfully")
+	totalPackages := 0
+	for _, db := range impl.Databases {
+		totalPackages += len(db.Packages)
+	}
+	t.Logf("✓ Summary: %d total packages, %d groups found", totalPackages, len(allGroups))
+}

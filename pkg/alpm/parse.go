@@ -153,49 +153,34 @@ func parsePackageEntry(files map[string]string, arch string) (*Package, error) {
 	}
 
 	// Parse other metadata files
-	if content, ok := files["depends"]; ok {
-		deps := strings.Split(strings.TrimSpace(content), "\n")
-		for _, dep := range deps {
-			if dep = strings.TrimSpace(dep); dep != "" && dep != "%DEPENDS%" {
-				pkg.DependsOn = append(pkg.DependsOn, dep)
-			}
-		}
+	// Parse dependencies from desc file
+	if desc, ok := files["desc"]; ok {
+		pkg.DependsOn = parseArrayMetadata("DEPENDS", desc)
 	}
 
-	if content, ok := files["optdepends"]; ok {
-		deps := strings.Split(strings.TrimSpace(content), "\n")
-		for _, dep := range deps {
-			if dep = strings.TrimSpace(dep); dep != "" && dep != "%OPTDEPENDS%" {
-				pkg.OptDepends = append(pkg.OptDepends, dep)
-			}
-		}
+	// Parse optional dependencies from desc file
+	if desc, ok := files["desc"]; ok {
+		pkg.OptDepends = parseArrayMetadata("OPTDEPENDS", desc)
 	}
 
-	if content, ok := files["provides"]; ok {
-		provides := strings.Split(strings.TrimSpace(content), "\n")
-		for _, prov := range provides {
-			if prov = strings.TrimSpace(prov); prov != "" && prov != "%PROVIDES%" {
-				pkg.Provides = append(pkg.Provides, prov)
-			}
-		}
+	// Parse provides from desc file
+	if desc, ok := files["desc"]; ok {
+		pkg.Provides = parseArrayMetadata("PROVIDES", desc)
 	}
 
-	if content, ok := files["conflicts"]; ok {
-		conflicts := strings.Split(strings.TrimSpace(content), "\n")
-		for _, conf := range conflicts {
-			if conf = strings.TrimSpace(conf); conf != "" && conf != "%CONFLICTS%" {
-				pkg.Conflicts = append(pkg.Conflicts, conf)
-			}
-		}
+	// Parse conflicts from desc file
+	if desc, ok := files["desc"]; ok {
+		pkg.Conflicts = parseArrayMetadata("CONFLICTS", desc)
 	}
 
-	if content, ok := files["replaces"]; ok {
-		replaces := strings.Split(strings.TrimSpace(content), "\n")
-		for _, repl := range replaces {
-			if repl = strings.TrimSpace(repl); repl != "" && repl != "%REPLACES%" {
-				pkg.Replaces = append(pkg.Replaces, repl)
-			}
-		}
+	// Parse replaces from desc file
+	if desc, ok := files["desc"]; ok {
+		pkg.Replaces = parseArrayMetadata("REPLACES", desc)
+	}
+
+	// Parse groups from desc file
+	if desc, ok := files["desc"]; ok {
+		pkg.Groups = parseArrayMetadata("GROUPS", desc)
 	}
 
 	return pkg, nil
@@ -211,6 +196,38 @@ func parseMetadata(key, content string) string {
 		}
 	}
 	return ""
+}
+
+// parseArrayMetadata extracts a list of values from a multi-line metadata section.
+// Format is like "%KEY%\nvalue1\nvalue2\nvalue3\n%NEXTKEY%" or end of content.
+// Stops parsing at the next "%SECTION%" marker or end of content.
+func parseArrayMetadata(key, content string) []string {
+	var result []string
+	lines := strings.Split(content, "\n")
+	inSection := false
+	keyMarker := fmt.Sprintf("%%%s%%", key)
+
+	for _, line := range lines {
+		// Start collecting when we find the section marker
+		if line == keyMarker {
+			inSection = true
+			continue
+		}
+
+		// Stop collecting at the next section marker
+		if inSection && strings.HasPrefix(line, "%") && line != "" {
+			break
+		}
+
+		// Collect non-empty lines in the section
+		if inSection {
+			if trimmed := strings.TrimSpace(line); trimmed != "" {
+				result = append(result, trimmed)
+			}
+		}
+	}
+
+	return result
 }
 
 // parseFilesMetadata extracts a list of files from FILES metadata.
@@ -277,11 +294,20 @@ func (c *Client) LoadCachedDatabase(repoName string) (*Database, error) {
 		}
 	}
 
+	// Build Groups index
+	groups := make(map[string][]*Package)
+	for _, pkg := range packages {
+		for _, group := range pkg.Groups {
+			groups[group] = append(groups[group], pkg)
+		}
+	}
+
 	db := &Database{
 		Name:     repoName,
 		Path:     dbPath,
 		Packages: packages,
 		Provides: provides,
+		Groups:   groups,
 		Arch:     c.Arch,
 	}
 

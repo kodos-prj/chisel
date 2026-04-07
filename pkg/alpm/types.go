@@ -36,6 +36,7 @@ type Database struct {
 	Path     string                // Disk cache path
 	Packages map[string]*Package   // name → Package
 	Provides map[string][]*Package // virtual name → [packages providing it]
+	Groups   map[string][]*Package // group name → [packages in group]
 	Arch     string                // Target architecture for filtering
 	mu       sync.RWMutex
 }
@@ -46,6 +47,7 @@ type DatabaseCache struct {
 	mu           sync.RWMutex
 	packages     map[string]*Package   // package name → latest Package
 	provides     map[string][]*Package // virtual name → [packages providing it]
+	groups       map[string][]*Package // group name → [packages in group]
 	databases    []*Database           // ordered list of databases (by precedence)
 	repoPriority map[string]int        // repository name → priority (lower = higher priority)
 }

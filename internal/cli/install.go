@@ -145,6 +145,12 @@ func (i *InstallCommand) Run(args []string) error {
 		return fmt.Errorf("failed to register databases: %w", err)
 	}
 
+	// Expand package groups to individual package names
+	expandedPkgNames, err := i.expandPackageGroups(client, pkgNames)
+	if err != nil {
+		return err
+	}
+
 	// Resolve package dependencies using MixedResolver (official + AUR)
 	if opts.Source != "" {
 		fmt.Printf("Resolving package dependencies (%s only)...\n", opts.Source)
@@ -154,7 +160,7 @@ func (i *InstallCommand) Run(args []string) error {
 	resolver := build.NewMixedResolver(client, i.config.AlpmDBPath)
 	defer resolver.Close()
 
-	toInstall, err := i.resolveMixedDependencies(resolver, pkgNames, opts.NoDeps, opts.Source)
+	toInstall, err := i.resolveMixedDependencies(resolver, expandedPkgNames, opts.NoDeps, opts.Source)
 	if err != nil {
 		return fmt.Errorf("failed to resolve dependencies: %w", err)
 	}
@@ -529,6 +535,39 @@ func (i *InstallCommand) Run(args []string) error {
 
 	fmt.Println("\n✓ Installation complete!")
 	return nil
+}
+
+// expandPackageGroups expands package group names to individual package names.
+// If a name matches a known group, all packages in that group are returned.
+// Otherwise, the name is assumed to be a package name and returned as-is.
+// This allows users to install entire groups with: chisel install gnome
+func (i *InstallCommand) expandPackageGroups(client *alpm.ALPMClient, names []string) ([]string, error) {
+	var expanded []string
+	seenPackages := make(map[string]bool) // Track to avoid duplicates
+
+	for _, name := range names {
+		// Try to find packages in this group
+		groupPackages := client.SearchPackagesByGroup(name)
+		if len(groupPackages) > 0 {
+			// Name matches a group - expand to all packages in group
+			fmt.Printf("Expanding group '%s' (%d packages):\n", name, len(groupPackages))
+			for _, pkg := range groupPackages {
+				if !seenPackages[pkg.Name] {
+					fmt.Printf("  + %s\n", pkg.Name)
+					expanded = append(expanded, pkg.Name)
+					seenPackages[pkg.Name] = true
+				}
+			}
+		} else {
+			// Not a group - treat as package name
+			if !seenPackages[name] {
+				expanded = append(expanded, name)
+				seenPackages[name] = true
+			}
+		}
+	}
+
+	return expanded, nil
 }
 
 // resolveDependencies resolves package dependencies.

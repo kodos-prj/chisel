@@ -101,6 +101,8 @@ func showUsage() {
 	fmt.Println("  sync              Sync package databases from Arch mirrors")
 	fmt.Println("  sync --status     Show database sync status")
 	fmt.Println("  search <pattern>  Search for packages")
+	fmt.Println("  search --group    Search packages in a group")
+	fmt.Println("  search --groups   List all available package groups")
 	fmt.Println("  info <package>    Show detailed package information")
 	fmt.Println("  info --deps <pkg> Show package info with dependency tree")
 	fmt.Println("")
@@ -251,15 +253,40 @@ func handleSync(args []string) {
 
 func handleSearch(args []string) {
 	if len(args) < 1 {
-		fmt.Fprintln(os.Stderr, "Error: search pattern required")
+		fmt.Fprintln(os.Stderr, "Error: search pattern or --group <name> required")
 		fmt.Fprintln(os.Stderr, "Usage: chisel search <pattern>")
+		fmt.Fprintln(os.Stderr, "       chisel search --group <group-name>")
+		fmt.Fprintln(os.Stderr, "       chisel search --groups (list all groups)")
 		os.Exit(1)
 	}
 
 	cfg := loadConfig()
-	pattern := args[0]
-
 	cmd := cli.NewSearchCommand(cfg)
+
+	// Check for group-related flags
+	if args[0] == "--group" {
+		if len(args) < 2 {
+			fmt.Fprintln(os.Stderr, "Error: group name required after --group")
+			os.Exit(1)
+		}
+		groupName := args[1]
+		if err := cmd.SearchGroup(groupName); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	if args[0] == "--groups" {
+		if err := cmd.ListGroups(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	// Regular pattern search
+	pattern := args[0]
 	if err := cmd.Execute(pattern); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
