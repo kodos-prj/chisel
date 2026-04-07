@@ -4,6 +4,7 @@ package cli
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/kodos-prj/chisel/pkg/alpm"
@@ -153,6 +154,81 @@ func (s *SearchCommand) ExactSearch(name string) error {
 	fmt.Printf("    Maintainer: %s\n", aurPkg.Maintainer)
 	if aurPkg.OutOfDate > 0 {
 		fmt.Printf("    ⚠ OUT OF DATE\n")
+	}
+
+	return nil
+}
+
+// SearchGroup searches for packages in a given group.
+// Displays all packages that belong to the group.
+func (s *SearchCommand) SearchGroup(groupName string) error {
+	if groupName == "" {
+		return fmt.Errorf("group name cannot be empty")
+	}
+
+	// Initialize ALPM client
+	client, err := alpm.NewClient(s.config.AlpmRoot, s.config.DBPath)
+	if err != nil {
+		return fmt.Errorf("failed to initialize ALPM: %w", err)
+	}
+	defer client.Close()
+
+	// Register sync databases
+	if err := client.RegisterAllSyncDBs(s.config.Repositories); err != nil {
+		return fmt.Errorf("failed to register sync databases: %w", err)
+	}
+
+	// Search for packages in the group
+	packages := client.SearchPackagesByGroup(groupName)
+	if len(packages) == 0 {
+		fmt.Printf("Group '%s' not found or contains no packages\n", groupName)
+		return nil
+	}
+
+	// Display results
+	fmt.Printf("Group '%s' (%d packages):\n\n", groupName, len(packages))
+	for _, pkg := range packages {
+		fmt.Printf("%s/%s %s\n", pkg.Repository, pkg.Name, pkg.Version)
+		if pkg.Description != "" {
+			fmt.Printf("    %s\n", pkg.Description)
+		}
+		// Show groups this package belongs to
+		if len(pkg.Groups) > 0 {
+			fmt.Printf("    Groups: %s\n", strings.Join(pkg.Groups, ", "))
+		}
+		fmt.Println()
+	}
+
+	return nil
+}
+
+// ListGroups returns all available package groups.
+func (s *SearchCommand) ListGroups() error {
+	// Initialize ALPM client
+	client, err := alpm.NewClient(s.config.AlpmRoot, s.config.DBPath)
+	if err != nil {
+		return fmt.Errorf("failed to initialize ALPM: %w", err)
+	}
+	defer client.Close()
+
+	// Register sync databases
+	if err := client.RegisterAllSyncDBs(s.config.Repositories); err != nil {
+		return fmt.Errorf("failed to register sync databases: %w", err)
+	}
+
+	// Get all groups
+	groups := client.ListAllGroups()
+	if len(groups) == 0 {
+		fmt.Println("No groups found")
+		return nil
+	}
+
+	// Sort groups for consistent output
+	sort.Strings(groups)
+	fmt.Printf("Available package groups (%d total):\n\n", len(groups))
+	for _, group := range groups {
+		packages := client.SearchPackagesByGroup(group)
+		fmt.Printf("%s (%d packages)\n", group, len(packages))
 	}
 
 	return nil
