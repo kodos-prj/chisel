@@ -170,6 +170,89 @@ chisel-user install vim
 chisel-user install vim --no-extract
 ```
 
+### Installing Package Groups
+
+Chisel supports package groups, which are collections of related packages that you can install together. For example, the `gnome` group contains all GNOME desktop packages, `kde` contains KDE Plasma packages, and `base-devel` contains essential development tools.
+
+#### List Available Groups
+
+```bash
+# See all available package groups
+chisel-user search --groups
+```
+
+This shows all available groups with the number of packages in each:
+```
+base (7 packages)
+base-devel (24 packages)
+development-tools (18 packages)
+editors (12 packages)
+gnome (85 packages)
+kde (102 packages)
+xfce (45 packages)
+...
+```
+
+#### Search Packages in a Group
+
+```bash
+# See all packages in a specific group
+chisel-user search --group gnome
+
+# Search for packages in the development tools group
+chisel-user search --group base-devel
+```
+
+#### Install a Package Group
+
+```bash
+# Install all packages from a group
+chisel-user install gnome
+
+# Install all development tools
+chisel-user install base-devel
+
+# Install multiple groups together
+chisel-user install gnome development-tools
+
+# Mix groups with individual packages
+chisel-user install gnome vim curl
+```
+
+When installing a group, chisel will:
+1. Show you which packages are from the group
+2. Resolve all dependencies automatically
+3. Download and extract all packages
+4. Create symlinks in ~/.local/bin
+
+#### Group Examples
+
+**Desktop Environments:**
+```bash
+# Install GNOME desktop
+chisel-user install gnome
+
+# Install KDE Plasma
+chisel-user install kde
+
+# Install XFCE desktop
+chisel-user install xfce
+```
+
+**Development Setup:**
+```bash
+# Install essential development tools
+chisel-user install base-devel development-tools editors
+
+# This installs compilers, build tools, version control, and editors
+```
+
+**Terminal User:**
+```bash
+# Install common terminal applications
+chisel-user install base editors
+```
+
 ### Chroot Support with Symlink Prefix Stripping
 
 The `--symlink-prefix` flag enables running packages inside a chroot environment by stripping path prefixes from symlinks. This is useful for creating isolated package environments.

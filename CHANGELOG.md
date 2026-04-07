@@ -5,6 +5,34 @@ All notable changes to Chisel will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-04-06
+
+### Added
+- **Package Group Support**: Install entire package collections with a single command
+  - `chisel-user install gnome` to install all GNOME desktop packages
+  - `chisel-user search --groups` to list all available package groups
+  - `chisel-user search --group gnome` to view packages in a specific group
+  - Support for mixed group and individual package installation
+  - Automatic dependency resolution for all packages in groups
+
+- **Database Parsing Enhancement**:
+  - Added `%GROUPS%` metadata parsing from Arch package databases
+  - Group data indexed for fast lookups and installation
+  - One-to-many package-to-groups relationships supported
+
+- **Search Command Enhancements**:
+  - New `--groups` flag to list all available package groups with package counts
+  - New `--group <name>` flag to search and display packages within a group
+
+- **Enhanced User Documentation**:
+  - New "Installing Package Groups" section in USER-GUIDE.md
+  - Examples for common use cases: desktop environments, development tools
+  - Workflow examples showing how to discover and install groups
+
+### Changed
+- Group expansion now happens before dependency resolution in install command
+- Clearer visual feedback during installation showing which packages are from groups
+
 ## [0.2.0] - 2026-04-06
 
 ### Added
