@@ -160,7 +160,11 @@ func parsePackageEntry(files map[string]string, arch string) (*Package, error) {
 
 	// Parse optional dependencies from desc file
 	if desc, ok := files["desc"]; ok {
-		pkg.OptDepends = parseArrayMetadata("OPTDEPENDS", desc)
+		rawOptDepends := parseArrayMetadata("OPTDEPENDS", desc)
+		// Strip descriptions (e.g., "aspell: spelling corrections" → "aspell")
+		for _, dep := range rawOptDepends {
+			pkg.OptDepends = append(pkg.OptDepends, extractPackageNameFromOptDepend(dep))
+		}
 	}
 
 	// Parse provides from desc file
@@ -228,6 +232,16 @@ func parseArrayMetadata(key, content string) []string {
 	}
 
 	return result
+}
+
+// extractPackageNameFromOptDepend extracts the package name from an optdepends string.
+// OptDepends format: "package: description"
+// Example: "aspell: spelling corrections" → "aspell"
+func extractPackageNameFromOptDepend(depString string) string {
+	if idx := strings.Index(depString, ":"); idx > 0 {
+		return depString[:idx]
+	}
+	return depString
 }
 
 // parseFilesMetadata extracts a list of files from FILES metadata.
