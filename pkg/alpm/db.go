@@ -235,6 +235,17 @@ func (c *Client) ListSyncDBs() ([]string, error) {
 	return names, nil
 }
 
+// SearchPackagesByGroup searches for packages in a given group.
+// Returns all packages that belong to the group across all databases.
+func (c *Client) SearchPackagesByGroup(groupName string) []*Package {
+	return c.Cache.GetPackagesByGroup(groupName)
+}
+
+// ListAllGroups returns all package group names from all databases.
+func (c *Client) ListAllGroups() []string {
+	return c.Cache.ListAllGroups()
+}
+
 // Close releases resources (not needed for pure Go implementation but kept for API compatibility).
 func (c *Client) Close() error {
 	// No resources to close in pure Go implementation

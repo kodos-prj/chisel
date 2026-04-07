@@ -198,6 +198,15 @@ func parsePackageEntry(files map[string]string, arch string) (*Package, error) {
 		}
 	}
 
+	if content, ok := files["groups"]; ok {
+		groups := strings.Split(strings.TrimSpace(content), "\n")
+		for _, group := range groups {
+			if group = strings.TrimSpace(group); group != "" && group != "%GROUPS%" {
+				pkg.Groups = append(pkg.Groups, group)
+			}
+		}
+	}
+
 	return pkg, nil
 }
 
@@ -277,11 +286,20 @@ func (c *Client) LoadCachedDatabase(repoName string) (*Database, error) {
 		}
 	}
 
+	// Build Groups index
+	groups := make(map[string][]*Package)
+	for _, pkg := range packages {
+		for _, group := range pkg.Groups {
+			groups[group] = append(groups[group], pkg)
+		}
+	}
+
 	db := &Database{
 		Name:     repoName,
 		Path:     dbPath,
 		Packages: packages,
 		Provides: provides,
+		Groups:   groups,
 		Arch:     c.Arch,
 	}
 
