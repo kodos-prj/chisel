@@ -204,13 +204,10 @@ func TestDependencyCycleDetection(t *testing.T) {
 
 	// Try to resolve the same package again (simulates cycle)
 	// In real usage, this would be caught during recursive resolution
+	// Cycles are now allowed (not an error) to handle real Arch database circular deps
 	err := resolver.resolveDependenciesRecursive("pkg-a", &[]PackageSource{}, false, "")
-	if err == nil {
-		t.Error("expected error for circular dependency")
-	}
-
-	if err.Error() != "circular dependency detected: [cycle involving pkg-a]" {
-		t.Errorf("unexpected error message: %v", err)
+	if err != nil {
+		t.Errorf("cycle resolution returned error: %v (expected nil)", err)
 	}
 }
 
