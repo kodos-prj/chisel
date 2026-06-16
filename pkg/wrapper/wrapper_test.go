@@ -257,7 +257,7 @@ func TestBuildWrapperScript(t *testing.T) {
 
 	// Verify script structure
 	if !strings.Contains(script, "#!/bin/bash") {
-		t.Error("Missing shebang")
+		t.Error("Wrapper script missing shebang for non-bash package")
 	}
 
 	if !strings.Contains(script, "LD_LIBRARY_PATH") {
@@ -284,6 +284,61 @@ func TestBuildWrapperScript(t *testing.T) {
 
 	if !strings.Contains(script, "/kod/store/vim/9.0.1/lib64") {
 		t.Error("Missing lib64 path")
+	}
+}
+
+// TestBuildWrapperScriptBashShebang tests that bash wrappers use the bash from store.
+func TestBuildWrapperScriptBashShebang(t *testing.T) {
+	gen := NewGenerator("/kod/store", "/kod/wrappers", "/")
+
+	libDirs := []string{"/kod/store/bash/5.3.9-1/lib"}
+	script := gen.buildWrapperScript("bash", "bash", "5.3.9-1", libDirs)
+
+	// Verify shebang uses store bash with "current" symlink
+	expectedShebang := "#!/kod/store/bash/current/usr/bin/bash"
+	if !strings.Contains(script, expectedShebang) {
+		t.Errorf("Expected shebang %q in bash wrapper, got:\n%s", expectedShebang, script)
+	}
+
+	// Verify other elements are still present
+	if !strings.Contains(script, "LD_LIBRARY_PATH") {
+		t.Error("Missing LD_LIBRARY_PATH in bash wrapper")
+	}
+
+	if !strings.Contains(script, "export") {
+		t.Error("Missing export statement in bash wrapper")
+	}
+
+	if !strings.Contains(script, "exec") {
+		t.Error("Missing exec statement in bash wrapper")
+	}
+}
+
+// TestBuildWrapperScriptBashWithPrefixStripping tests bash shebang with prefix stripping.
+func TestBuildWrapperScriptBashWithPrefixStripping(t *testing.T) {
+	gen := NewGeneratorWithPrefix("/kod/store", "/kod/wrappers", "/", "/tmp/demo")
+
+	libDirs := []string{"/tmp/demo/kod/store/bash/5.3.9-1/lib"}
+	script := gen.buildWrapperScript("bash", "bash", "5.3.9-1", libDirs)
+
+	// Verify shebang is stripped (no /tmp/demo prefix)
+	expectedShebang := "#!/kod/store/bash/current/usr/bin/bash"
+	if !strings.Contains(script, expectedShebang) {
+		t.Errorf("Expected stripped shebang %q in bash wrapper, got:\n%s", expectedShebang, script)
+	}
+
+	// Verify the shebang doesn't contain the prefix
+	if strings.Contains(script, "#!/tmp/demo/") {
+		t.Error("Shebang should not contain stripped prefix in bash wrapper")
+	}
+
+	// Verify other elements still work with prefix stripping
+	if !strings.Contains(script, "LD_LIBRARY_PATH") {
+		t.Error("Missing LD_LIBRARY_PATH in bash wrapper with prefix stripping")
+	}
+
+	if !strings.Contains(script, "exec") {
+		t.Error("Missing exec statement in bash wrapper with prefix stripping")
 	}
 }
 

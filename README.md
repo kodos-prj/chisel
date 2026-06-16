@@ -119,7 +119,7 @@ See [USER-GUIDE.md](USER-GUIDE.md) for comprehensive documentation.
 - **Cross-environment compatibility** - use same packages in different contexts
 
 ### System Architecture
-- **Single binary** - pure Go, no external dependencies (NO libalpm required)
+- **Single binary** - pure Go, no external dependencies
 - **7 main packages**: `config`, `registry`, `database` (sync), `alpm` (package parsing), `store` (package storage), `wrapper` (script generation), `symlink` (symlink management), `build` (AUR builder)
 - **~10,000+ lines** of Go code with comprehensive tests
 - **Filesystem agnostic** - works on ext4, xfs, btrfs, etc.
@@ -145,7 +145,7 @@ A **cross-distribution package manager** that:
 
 ### Core
 - **Language**: Go 1.25+ (no external C dependencies)
-- **ALPM Implementation**: Pure Go (no libalpm required)
+- **ALPM Implementation**: Pure Go (no external dependencies)
 - **CLI Framework**: Native Go `flag` package (not Cobra)
 - **Package Format**: Native Arch packages (.pkg.tar.zst)
 - **Package Source**: Arch Linux mirrors (core, extra repositories)

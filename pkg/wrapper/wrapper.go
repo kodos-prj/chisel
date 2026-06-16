@@ -236,19 +236,39 @@ func (g *Generator) buildWrapperScript(cmdName, pkgName, version string, ldLibra
 		// If stripping fails, use the original path
 	}
 
+	// Determine shebang based on package
+	var shebang string
+	if pkgName == "bash" {
+		// Use isolated bash from store with "current" symlink
+		bashPath := filepath.Join(g.storeRoot, "bash", "current", "usr/bin/bash")
+
+		// Apply prefix stripping to shebang if configured
+		if g.stripPrefix != "" {
+			strippedPath, err := symlink.StripPrefix(bashPath, g.stripPrefix)
+			if err == nil {
+				bashPath = strippedPath
+			}
+			// If stripping fails, use the original path
+		}
+
+		shebang = "#!" + bashPath
+	} else {
+		shebang = "#!/bin/bash"
+	}
+
 	// Build LD_LIBRARY_PATH value
 	ldPath := strings.Join(ldLibraryPath, ":")
 	if ldPath != "" {
 		ldPath = ldPath + ":$LD_LIBRARY_PATH"
 	}
 
-	script := fmt.Sprintf(`#!/bin/bash
+	script := fmt.Sprintf(`%s
 # Wrapper script for %s (from package %s-%s)
 # Sets LD_LIBRARY_PATH to enable library isolation
 
 export LD_LIBRARY_PATH="%s"
 exec "%s" "$@"
-`, cmdName, pkgName, version, ldPath, cmdPath)
+`, shebang, cmdName, pkgName, version, ldPath, cmdPath)
 
 	return script
 }
