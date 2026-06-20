@@ -13,10 +13,11 @@ import (
 const version = "0.3.1"
 
 var (
-	configPath string
-	baseDir    string
-	mirrorURL  string
-	symlinkDir string
+	configPath      string
+	baseDir         string
+	baseDirExplicit bool // Track if --base-dir was explicitly provided
+	mirrorURL       string
+	symlinkDir      string
 )
 
 func main() {
@@ -29,6 +30,9 @@ func main() {
 
 	// Parse flags before checking commands
 	flag.Parse()
+
+	// Track if --base-dir was explicitly provided (before loading config)
+	baseDirExplicit = (baseDir != "")
 
 	args := flag.Args()
 	if len(args) < 1 {
@@ -369,7 +373,7 @@ func handleInstall(args []string) {
 	}
 
 	cfg := loadConfig()
-	cmd := cli.NewInstallCommandWithSymlinkDir(cfg, symlinkDir)
+	cmd := cli.NewInstallCommandWithSymlinkDirAndExplicitBaseDir(cfg, symlinkDir, baseDirExplicit)
 	if err := cmd.Run(args); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)

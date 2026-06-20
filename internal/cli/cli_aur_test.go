@@ -904,3 +904,159 @@ func TestExecutableSymlinkBehaviorWithPrefix(t *testing.T) {
 		})
 	}
 }
+
+// TestAutoSetBaseDirWithSymlinkPrefix tests that --base-dir is automatically set to {prefix}/kod
+// when --symlink-prefix is used without an explicit --base-dir
+func TestAutoSetBaseDirWithSymlinkPrefix(t *testing.T) {
+	cfg := &config.Config{
+		BaseDir:    "/kod",
+		StoreRoot:  "/kod/store",
+		WrapperDir: "/kod/wrappers",
+	}
+
+	cmd := NewInstallCommandWithSymlinkDirAndExplicitBaseDir(cfg, "", false)
+
+	// Verify initial state
+	if cmd.BaseDirExplicit() != false {
+		t.Errorf("baseDirExplicit should be false, got %v", cmd.BaseDirExplicit())
+	}
+
+	// Simulate what Run() does when --symlink-prefix is provided
+	opts := &InstallOptions{
+		SymlinkPrefix: "/tmp/chroot",
+	}
+
+	// Auto-set logic (as in Run method)
+	if opts.SymlinkPrefix != "" && !cmd.BaseDirExplicit() {
+		newBaseDir := filepath.Join(opts.SymlinkPrefix, "kod")
+		cmd.config.BaseDir = newBaseDir
+		cmd.config.UpdateDerivedPaths()
+	}
+
+	// Verify the auto-set worked
+	expectedBaseDir := "/tmp/chroot/kod"
+	if cmd.config.BaseDir != expectedBaseDir {
+		t.Errorf("BaseDir not auto-set correctly: expected %q, got %q", expectedBaseDir, cmd.config.BaseDir)
+	}
+}
+
+// TestBaseDirNotAutoSetWhenExplicit tests that --base-dir is NOT auto-set when user explicitly provides it
+func TestBaseDirNotAutoSetWhenExplicit(t *testing.T) {
+	cfg := &config.Config{
+		BaseDir:    "/custom/path",
+		StoreRoot:  "/custom/path/store",
+		WrapperDir: "/custom/path/wrappers",
+	}
+
+	cmd := NewInstallCommandWithSymlinkDirAndExplicitBaseDir(cfg, "", true) // baseDirExplicit = true
+
+	// Verify initial state
+	if cmd.BaseDirExplicit() != true {
+		t.Errorf("baseDirExplicit should be true, got %v", cmd.BaseDirExplicit())
+	}
+
+	originalBaseDir := cmd.config.BaseDir
+
+	// Simulate what Run() does when both --symlink-prefix and --base-dir are provided
+	opts := &InstallOptions{
+		SymlinkPrefix: "/tmp/chroot",
+	}
+
+	// Auto-set logic (as in Run method) - should NOT apply when baseDirExplicit is true
+	if opts.SymlinkPrefix != "" && !cmd.BaseDirExplicit() {
+		newBaseDir := filepath.Join(opts.SymlinkPrefix, "kod")
+		cmd.config.BaseDir = newBaseDir
+		cmd.config.UpdateDerivedPaths()
+	}
+
+	// Verify BaseDir was NOT changed
+	if cmd.config.BaseDir != originalBaseDir {
+		t.Errorf("BaseDir should not be auto-set when explicit: expected %q, got %q", originalBaseDir, cmd.config.BaseDir)
+	}
+}
+
+// TestBaseDirNotAutoSetWithoutSymlinkPrefix tests that --base-dir is NOT auto-set when --symlink-prefix is not provided
+func TestBaseDirNotAutoSetWithoutSymlinkPrefix(t *testing.T) {
+	cfg := &config.Config{
+		BaseDir:    "/kod",
+		StoreRoot:  "/kod/store",
+		WrapperDir: "/kod/wrappers",
+	}
+
+	cmd := NewInstallCommandWithSymlinkDirAndExplicitBaseDir(cfg, "", false) // baseDirExplicit = false
+
+	originalBaseDir := cmd.config.BaseDir
+
+	// Simulate Run() behavior when --symlink-prefix is NOT provided
+	opts := &InstallOptions{
+		SymlinkPrefix: "", // No prefix
+	}
+
+	// Auto-set logic (as in Run method) - should NOT apply when SymlinkPrefix is empty
+	if opts.SymlinkPrefix != "" && !cmd.BaseDirExplicit() {
+		newBaseDir := filepath.Join(opts.SymlinkPrefix, "kod")
+		cmd.config.BaseDir = newBaseDir
+		cmd.config.UpdateDerivedPaths()
+	}
+
+	// Verify BaseDir was NOT changed
+	if cmd.config.BaseDir != originalBaseDir {
+		t.Errorf("BaseDir should not be auto-set without --symlink-prefix: expected %q, got %q", originalBaseDir, cmd.config.BaseDir)
+	}
+}
+
+// TestNewInstallCommandConstructors tests that constructors properly initialize baseDirExplicit
+func TestNewInstallCommandConstructors(t *testing.T) {
+	cfg := &config.Config{
+		BaseDir: "/kod",
+	}
+
+	tests := []struct {
+		name              string
+		constructor       func() *InstallCommand
+		expectedExplicit  bool
+		description       string
+	}{
+		{
+			name: "NewInstallCommand",
+			constructor: func() *InstallCommand {
+				return NewInstallCommand(cfg)
+			},
+			expectedExplicit: false,
+			description:      "default constructor should have baseDirExplicit=false",
+		},
+		{
+			name: "NewInstallCommandWithSymlinkDir",
+			constructor: func() *InstallCommand {
+				return NewInstallCommandWithSymlinkDir(cfg, "/tmp/chroot")
+			},
+			expectedExplicit: false,
+			description:      "symlink-dir constructor should have baseDirExplicit=false",
+		},
+		{
+			name: "NewInstallCommandWithSymlinkDirAndExplicitBaseDir (false)",
+			constructor: func() *InstallCommand {
+				return NewInstallCommandWithSymlinkDirAndExplicitBaseDir(cfg, "/tmp/chroot", false)
+			},
+			expectedExplicit: false,
+			description:      "new constructor with baseDirExplicit=false should be false",
+		},
+		{
+			name: "NewInstallCommandWithSymlinkDirAndExplicitBaseDir (true)",
+			constructor: func() *InstallCommand {
+				return NewInstallCommandWithSymlinkDirAndExplicitBaseDir(cfg, "/tmp/chroot", true)
+			},
+			expectedExplicit: true,
+			description:      "new constructor with baseDirExplicit=true should be true",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cmd := tt.constructor()
+			if cmd.BaseDirExplicit() != tt.expectedExplicit {
+				t.Errorf("%s: got %v, expected %v", tt.description, cmd.BaseDirExplicit(), tt.expectedExplicit)
+			}
+		})
+	}
+}

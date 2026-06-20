@@ -22,10 +22,11 @@ import (
 
 // InstallCommand handles installing packages from official repos or AUR.
 type InstallCommand struct {
-	config     *config.Config
-	symlinkDir string
-	aurRPC     *aur.RPCClient
-	buildMgr   *build.BuildManager
+	config          *config.Config
+	symlinkDir      string
+	baseDirExplicit bool // Track if --base-dir was explicitly provided
+	aurRPC          *aur.RPCClient
+	buildMgr        *build.BuildManager
 }
 
 // NewInstallCommand creates a new install command.
@@ -34,10 +35,11 @@ func NewInstallCommand(cfg *config.Config) *InstallCommand {
 	buildLogsDir := filepath.Join(cfg.BaseDir, "build-logs")
 	buildMgr, _ := build.NewBuildManager(buildCacheDir, buildLogsDir)
 	return &InstallCommand{
-		config:     cfg,
-		symlinkDir: "",
-		aurRPC:     aur.NewRPCClient(),
-		buildMgr:   buildMgr,
+		config:          cfg,
+		symlinkDir:      "",
+		baseDirExplicit: false,
+		aurRPC:          aur.NewRPCClient(),
+		buildMgr:        buildMgr,
 	}
 }
 
@@ -47,11 +49,32 @@ func NewInstallCommandWithSymlinkDir(cfg *config.Config, symlinkDir string) *Ins
 	buildLogsDir := filepath.Join(cfg.BaseDir, "build-logs")
 	buildMgr, _ := build.NewBuildManager(buildCacheDir, buildLogsDir)
 	return &InstallCommand{
-		config:     cfg,
-		symlinkDir: symlinkDir,
-		aurRPC:     aur.NewRPCClient(),
-		buildMgr:   buildMgr,
+		config:          cfg,
+		symlinkDir:      symlinkDir,
+		baseDirExplicit: false,
+		aurRPC:          aur.NewRPCClient(),
+		buildMgr:        buildMgr,
 	}
+}
+
+// NewInstallCommandWithSymlinkDirAndExplicitBaseDir creates a new install command with
+// a symlink directory and tracking of whether --base-dir was explicitly provided.
+func NewInstallCommandWithSymlinkDirAndExplicitBaseDir(cfg *config.Config, symlinkDir string, baseDirExplicit bool) *InstallCommand {
+	buildCacheDir := filepath.Join(cfg.BaseDir, "build-cache")
+	buildLogsDir := filepath.Join(cfg.BaseDir, "build-logs")
+	buildMgr, _ := build.NewBuildManager(buildCacheDir, buildLogsDir)
+	return &InstallCommand{
+		config:          cfg,
+		symlinkDir:      symlinkDir,
+		baseDirExplicit: baseDirExplicit,
+		aurRPC:          aur.NewRPCClient(),
+		buildMgr:        buildMgr,
+	}
+}
+
+// BaseDirExplicit returns whether --base-dir was explicitly provided by the user.
+func (i *InstallCommand) BaseDirExplicit() bool {
+	return i.baseDirExplicit
 }
 
 // InstallOptions holds command-line options for install.
@@ -131,6 +154,14 @@ func (i *InstallCommand) Run(args []string) error {
 
 	if len(pkgNames) == 0 {
 		return fmt.Errorf("package name required")
+	}
+
+	// Auto-set BaseDir to {prefix}/kod when --symlink-prefix is used and --base-dir was not explicitly provided
+	if opts.SymlinkPrefix != "" && !i.baseDirExplicit {
+		newBaseDir := filepath.Join(opts.SymlinkPrefix, "kod")
+		i.config.BaseDir = newBaseDir
+		i.config.UpdateDerivedPaths()
+		fmt.Printf("Auto-setting --base-dir=%s (based on --symlink-prefix)\n", newBaseDir)
 	}
 
 	// Initialize ALPM client
