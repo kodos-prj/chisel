@@ -365,10 +365,13 @@ func handleInstall(args []string) {
 		fmt.Fprintln(os.Stderr, "Error: package name required")
 		fmt.Fprintln(os.Stderr, "Usage: chisel install [options] <package> [package2] ...")
 		fmt.Fprintln(os.Stderr, "Options:")
-		fmt.Fprintln(os.Stderr, "  --no-deps      Skip dependency resolution")
-		fmt.Fprintln(os.Stderr, "  --no-extract   Skip extraction (assume already in store)")
-		fmt.Fprintln(os.Stderr, "  --no-symlink   Skip symlink creation")
-		fmt.Fprintln(os.Stderr, "  --force        Force overwrite of existing symlinks")
+		fmt.Fprintln(os.Stderr, "  --source=aur       Install from AUR only (skip official repositories)")
+		fmt.Fprintln(os.Stderr, "  --source=official  Install from official repositories only (skip AUR)")
+		fmt.Fprintln(os.Stderr, "  --no-deps          Skip dependency resolution")
+		fmt.Fprintln(os.Stderr, "  --no-extract       Skip extraction (assume already in store)")
+		fmt.Fprintln(os.Stderr, "  --no-symlink       Skip symlink creation")
+		fmt.Fprintln(os.Stderr, "  --force            Force overwrite of existing symlinks")
+		fmt.Fprintln(os.Stderr, "  --chroot           Chroot directory path for self-contained installation")
 		os.Exit(1)
 	}
 
@@ -385,7 +388,7 @@ func handleRemove(args []string) {
 		fmt.Fprintln(os.Stderr, "Error: package name required")
 		fmt.Fprintln(os.Stderr, "Usage: chisel remove [options] <package> [package2] ...")
 		fmt.Fprintln(os.Stderr, "Options:")
-		fmt.Fprintln(os.Stderr, "  --force  Force removal even if symlinks don't exist")
+		fmt.Fprintln(os.Stderr, "  --force  Force removal even if symlinks are missing or cannot be accessed")
 		os.Exit(1)
 	}
 
@@ -413,6 +416,17 @@ func handleList(args []string) {
 }
 
 func handleUpgrade(args []string) {
+	// Show help if --help flag is provided
+	for _, arg := range args {
+		if arg == "--help" || arg == "-h" {
+			fmt.Fprintln(os.Stderr, "Usage: chisel upgrade [options] [package ...]")
+			fmt.Fprintln(os.Stderr, "Options:")
+			fmt.Fprintln(os.Stderr, "  --dry-run  Preview upgrades without making changes")
+			fmt.Fprintln(os.Stderr, "  --verbose  Show detailed upgrade information")
+			os.Exit(0)
+		}
+	}
+
 	cfg := loadConfig()
 
 	// Parse upgrade-specific flags
@@ -452,6 +466,19 @@ func handleUpgrade(args []string) {
 }
 
 func handleCleanup(args []string) {
+	// Show help if --help flag is provided
+	for _, arg := range args {
+		if arg == "--help" || arg == "-h" {
+			fmt.Fprintln(os.Stderr, "Usage: chisel cleanup [options]")
+			fmt.Fprintln(os.Stderr, "Options:")
+			fmt.Fprintln(os.Stderr, "  --keep <N>   Keep N recent versions (default: 3)")
+			fmt.Fprintln(os.Stderr, "  --dry-run    Preview cleanup without making changes")
+			fmt.Fprintln(os.Stderr, "  --verbose    Show detailed cleanup information")
+			fmt.Fprintln(os.Stderr, "  --force      Remove versions without confirmation")
+			os.Exit(0)
+		}
+	}
+
 	cfg := loadConfig()
 
 	// Parse cleanup-specific flags
@@ -502,6 +529,19 @@ func handleCleanup(args []string) {
 }
 
 func handleCache(args []string) {
+	// Show help if --help flag is provided
+	for _, arg := range args {
+		if arg == "--help" || arg == "-h" {
+			fmt.Fprintln(os.Stderr, "Usage: chisel cache [options]")
+			fmt.Fprintln(os.Stderr, "Options:")
+			fmt.Fprintln(os.Stderr, "  --list     List cache contents without removing")
+			fmt.Fprintln(os.Stderr, "  --dry-run  Preview cache cleanup without making changes")
+			fmt.Fprintln(os.Stderr, "  --verbose  Show detailed cache information")
+			fmt.Fprintln(os.Stderr, "  --force    Force removal of all cache files")
+			os.Exit(0)
+		}
+	}
+
 	cfg := loadConfig()
 
 	// Parse cache-specific flags
