@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/kodos-prj/chisel/pkg/config"
 	"github.com/kodos-prj/chisel/pkg/store"
@@ -90,39 +91,18 @@ func (e *ExtractCommand) Run(args []string) error {
 // Example: "bash-5.3.9-1-x86_64" -> ["bash", "5.3.9-1"]
 // Format: <name>-<version>-<pkgrel>-<arch>
 func pathToPackageParts(pkgName string) []string {
-	// Find positions of all dashes
-	var dashes []int
-	for i := 0; i < len(pkgName); i++ {
-		if pkgName[i] == '-' {
-			dashes = append(dashes, i)
-		}
-	}
-
-	// Need at least 3 dashes for name-version-pkgrel-arch format
-	if len(dashes) < 3 {
+	parts := strings.Split(pkgName, "-")
+	
+	// Need at least 4 parts: name, version, pkgrel, arch
+	if len(parts) < 4 {
 		return []string{pkgName}
 	}
-
-	// The third-to-last dash separates version-pkgrel from arch
-	// The first dash we find (usually after name) separates name from version
-	// We want to find the minimal name that could be valid
-	// Strategy: try splitting at the earliest dash, keep the rest as version-pkgrel
-
-	// For simplicity: first dash position gives us the split between name and version-pkgrel-arch
-	if len(dashes) == 0 {
-		return []string{pkgName}
-	}
-
-	// Try to find the correct split
-	// The arch part is usually one of: x86_64, i686, aarch64, etc.
-	// Work backwards: the last dash is before arch, second-to-last is before pkgrel
-	// Third-to-last is before version
-
-	thirdLastDash := dashes[len(dashes)-3]
-
-	name := pkgName[:thirdLastDash]
-	version := pkgName[thirdLastDash+1 : dashes[len(dashes)-1]]
-
+	
+	// Join all but the last 2 parts (arch and pkgrel) as version
+	// The rest is the name
+	name := strings.Join(parts[:len(parts)-2], "-")
+	version := parts[len(parts)-2]
+	
 	return []string{name, version}
 }
 

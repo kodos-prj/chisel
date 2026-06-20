@@ -169,9 +169,5 @@ func (d *Downloader) GetLocalPath(pkg PackageInfo) string {
 }
 
 // CleanCache removes old or unused packages from the cache.
-// For now, this is a placeholder - actual cleanup logic will be implemented
-// when we have the package store and registry integrated.
-func (d *Downloader) CleanCache() error {
-	// TODO: Implement cache cleanup based on registry and keep versions policy
-	return nil
-}
+// This is planned for future implementation when package store and registry
+// integration is complete and a keep-versions policy is established.

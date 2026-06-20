@@ -81,7 +81,11 @@ func (d *DownloadCommand) Run(args []string) error {
 	// Print results
 	fmt.Printf("\n✓ Downloaded %d package(s):\n", len(results))
 	for name, path := range results {
-		info, _ := os.Stat(path)
+		info, err := os.Stat(path)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "  ⚠ Warning: could not stat %s: %v\n", name, err)
+			continue
+		}
 		size := info.Size()
 		fmt.Printf("  ✓ %s (%d bytes) -> %s\n", name, size, path)
 	}
