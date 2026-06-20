@@ -255,7 +255,7 @@ chisel-user install base editors
 
 ### Chroot Support with Symlink Prefix Stripping
 
-The `--symlink-prefix` flag enables running packages inside a chroot environment by doing TWO important things:
+The `--chroot` flag enables running packages inside a chroot environment by doing TWO important things:
 
 1. **Creates symlinks INSIDE the prefix directory** (not on host system)
 2. **Strips the prefix from symlink targets** (enables portability across locations)
@@ -270,10 +270,10 @@ mkdir /tmp/demo
 cd /tmp/demo
 
 # Install with symlink prefix
-sudo chisel-user install vim --symlink-prefix=/tmp/demo
+sudo chisel-user install vim --chroot=/tmp/demo
 
 # Or use space-separated syntax
-sudo chisel-user install vim --symlink-prefix /tmp/demo
+sudo chisel-user install vim --chroot /tmp/demo
 ```
 
 #### What Gets Created
@@ -296,7 +296,7 @@ When you run the above command, chisel creates:
 
 The prefix stripping affects three key areas:
 
-1. **Symlink Location**: `--symlink-prefix=/tmp/demo` → symlinks created in `/tmp/demo/usr/bin/`
+1. **Symlink Location**: `--chroot=/tmp/demo` → symlinks created in `/tmp/demo/usr/bin/`
 2. **Symlink Targets**: `/tmp/demo/kod/store/vim/...` → stripped to `/kod/store/vim/...`
 3. **Wrapper Scripts**: Library paths adjusted for the prefix directory
 
@@ -319,7 +319,7 @@ This design allows the `/tmp/demo` directory to be portable—it can be moved, m
 ```bash
 # Setup and install
 mkdir /tmp/dev-chroot
-sudo chisel install --symlink-prefix=/tmp/dev-chroot gcc git vim
+sudo chisel install --chroot=/tmp/dev-chroot gcc git vim
 
 # Verify symlinks are in the chroot
 ls -la /tmp/dev-chroot/usr/bin/gcc
@@ -345,10 +345,10 @@ Both of these are equivalent:
 
 ```bash
 # Equals-separated syntax
-chisel install vim --symlink-prefix=/tmp/demo
+chisel install vim --chroot=/tmp/demo
 
 # Space-separated syntax
-chisel install vim --symlink-prefix /tmp/demo
+chisel install vim --chroot /tmp/demo
 ```
 
 #### Advanced Usage
@@ -357,17 +357,17 @@ Combine with other flags:
 
 ```bash
 # Install with prefix stripping and force overwrite
-chisel install vim --symlink-prefix=/tmp/demo --force
+chisel install vim --chroot=/tmp/demo --force
 
 # Install multiple packages with prefix stripping
-chisel install vim curl wget --symlink-prefix=/tmp/demo
+chisel install vim curl wget --chroot=/tmp/demo
 
 # Combine with --base-dir for complete isolation
 sudo chisel --base-dir=/tmp/demo/kod \
-  install --symlink-prefix=/tmp/demo vim gcc
+  install --chroot=/tmp/demo vim gcc
 
 # Install from AUR with prefix stripping
-chisel install yay --source=aur --symlink-prefix=/tmp/demo
+chisel install yay --source=aur --chroot=/tmp/demo
 ```
 
 #### Common Mistakes
@@ -376,17 +376,17 @@ chisel install yay --source=aur --symlink-prefix=/tmp/demo
 ```bash
 # ❌ Wrong - symlinks created in /tmp/chroot, not /tmp/my-chroot
 mkdir /tmp/my-chroot
-sudo chisel install --symlink-prefix=/tmp/chroot vim
+sudo chisel install --chroot=/tmp/chroot vim
 
 # ✓ Correct - use the actual directory
-sudo chisel install --symlink-prefix=/tmp/my-chroot vim
+sudo chisel install --chroot=/tmp/my-chroot vim
 ```
 
 **Mistake 2: Trying to access symlinks on host**
 ```bash
 # ❌ This won't work
 mkdir /tmp/demo
-sudo chisel install --symlink-prefix=/tmp/demo vim
+sudo chisel install --chroot=/tmp/demo vim
 which vim  # Shows nothing - symlinks are inside /tmp/demo, not on host
 
 # ✓ Correct - access inside the directory
@@ -528,12 +528,12 @@ If you have both user and system configs:
 
 ### Symlink prefix stripping issues
 
-If packages don't work correctly with `--symlink-prefix`:
+If packages don't work correctly with `--chroot`:
 
 1. Verify the prefix matches your chroot path:
 ```bash
 # If you're building in /tmp/demo, use that exact prefix
-chisel-user install vim --symlink-prefix=/tmp/demo
+chisel-user install vim --chroot=/tmp/demo
 ```
 
 2. Check that symlinks were created correctly:
@@ -554,7 +554,7 @@ cat ~/.local/share/chisel/wrappers/vim-wrapper.sh
 ```bash
 # Reinstall without the prefix and try again
 chisel-user remove vim
-chisel-user install vim --symlink-prefix=/tmp/demo
+chisel-user install vim --chroot=/tmp/demo
 ```
 
 ## Advanced Usage

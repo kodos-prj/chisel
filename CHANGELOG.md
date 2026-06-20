@@ -36,9 +36,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.2.0] - 2026-04-06
 
 ### Added
-- **Symlink-Prefix Stripping for Chroot Support**: New `--symlink-prefix` flag enables running packages inside chroot environments
+- **Symlink-Prefix Stripping for Chroot Support**: New `--chroot` flag enables running packages inside chroot environments
   - Strip path prefixes from symlinks, wrapper scripts, and command paths
-  - Support both equals-separated (`--symlink-prefix=/tmp/demo`) and space-separated (`--symlink-prefix /tmp/demo`) flag syntax
+  - Support both equals-separated (`--chroot=/tmp/demo`) and space-separated (`--chroot /tmp/demo`) flag syntax
   - Enable package portability across different mount points and containerized environments
   - Comprehensive documentation with use cases and examples
 
@@ -53,7 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Advanced usage examples combining flags
 
 ### Fixed
-- **Feature Branch Cleanup**: Removed outdated `feature/symlink-prefix-stripping` branch after merging into main
+- **Feature Branch Cleanup**: Removed outdated `feature/chroot-stripping` branch after merging into main
 
 ### Changed
 - **Repository Management**: Removed community repository from default configuration

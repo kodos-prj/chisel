@@ -114,7 +114,7 @@ See [USER-GUIDE.md](USER-GUIDE.md) for comprehensive documentation.
 - **Mixed resolver** - seamlessly resolves dependencies across official and AUR packages
 
 ### Chroot & Container Support
-- **Symlink-prefix stripping** - adjust paths for containers and chroots (`--symlink-prefix /tmp/demo`)
+- **Symlink-prefix stripping** - adjust paths for containers and chroots (`--chroot /tmp/demo`)
 - **Portable packages** - run packages in different mount points and environments
 - **Cross-environment compatibility** - use same packages in different contexts
 
@@ -319,14 +319,14 @@ chisel-user cleanup
 ### 3. Container/Chroot & CI/CD Environments
 Prepare and deploy portable, reproducible package environments for containerization, CI/CD pipelines, and cross-distribution compatibility.
 
-**Key capability:** `--symlink-prefix` creates symlinks **inside** the specified directory (not on host), enabling true portability.
+**Key capability:** `--chroot` creates symlinks **inside** the specified directory (not on host), enabling true portability.
 
 **Examples:**
 
 ```bash
 # Development chroot with packages inside /tmp/dev-chroot
 mkdir /tmp/dev-chroot
-sudo chisel install --symlink-prefix=/tmp/dev-chroot gcc vim git
+sudo chisel install --chroot=/tmp/dev-chroot gcc vim git
 
 # Verify symlinks are in the chroot
 ls -la /tmp/dev-chroot/usr/bin/gcc  # ✓ Exists
@@ -336,11 +336,11 @@ sudo chroot /tmp/dev-chroot /bin/bash
 gcc --version  # ✓ Works inside chroot!
 
 # CI/CD pipeline with consistent packages
-sudo chisel install --symlink-prefix=/mnt/build base-devel cmake ninja
+sudo chisel install --chroot=/mnt/build base-devel cmake ninja
 
 # Portable workspace
 mkdir ~/build-env
-chisel install --symlink-prefix=~/build-env gcc git make
+chisel install --chroot=~/build-env gcc git make
 
 # Export for reproducibility
 tar czf build-env.tar.gz ~/build-env

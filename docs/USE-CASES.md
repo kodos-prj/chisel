@@ -349,7 +349,7 @@ Modern development requires:
 
 ### Solution: Chisel with Symlink Prefix Stripping
 
-Chisel's `--symlink-prefix` feature enables portable package environments by stripping path prefixes from symlinks and wrapper scripts. Packages work identically in containers, chroots, and different mount points.
+Chisel's `--chroot` feature enables portable package environments by stripping path prefixes from symlinks and wrapper scripts. Packages work identically in containers, chroots, and different mount points.
 
 ### Scenarios
 
@@ -363,7 +363,7 @@ cd /tmp/buildroot
 
 # Install packages with symlink prefix stripping
 chisel install \
-  --symlink-prefix=/tmp/buildroot \
+  --chroot=/tmp/buildroot \
   gcc git vim curl base-devel
 
 # Create Dockerfile referencing the build
@@ -397,7 +397,7 @@ jobs:
       - name: Install Chisel packages
         run: |
           sudo chisel install \
-            --symlink-prefix=/home/runner/work/build \
+            --chroot=/home/runner/work/build \
             gcc cmake ninja make
       
       - name: Build project
@@ -423,7 +423,7 @@ cd /tmp/dev-chroot
 
 # Install development tools with symlink prefix
 chisel install \
-  --symlink-prefix=/tmp/dev-chroot \
+  --chroot=/tmp/dev-chroot \
   gcc git make cmake python
 
 # Enter chroot
@@ -460,7 +460,7 @@ matrix:
       run: |
         if [ "$RUNNER_OS" == "Linux" ]; then
           sudo chisel sync
-          sudo chisel install --symlink-prefix=/tmp/build \
+          sudo chisel install --chroot=/tmp/build \
             gcc cmake nodejs
         fi
     
@@ -486,7 +486,7 @@ mkdir ~/workspace && cd ~/workspace
 
 # Install workspace tools
 chisel install \
-  --symlink-prefix=~/workspace \
+  --chroot=~/workspace \
   gcc git vim docker docker-compose
 
 # Create portable environment
@@ -511,18 +511,18 @@ gcc --version  # Works on any Linux distribution
 
 ### How Symlink Prefix Stripping Works
 
-The `--symlink-prefix` flag accomplishes two critical tasks:
+The `--chroot` flag accomplishes two critical tasks:
 
 #### 1. Creates Symlinks INSIDE the Prefix Directory
 
-**Without `--symlink-prefix`:**
+**Without `--chroot`:**
 ```bash
 # Symlinks created on host system
 /usr/bin/vim → /kod/store/vim/.../usr/bin/vim
 /usr/bin/git → /kod/store/git/.../usr/bin/git
 ```
 
-**With `--symlink-prefix=/tmp/chroot`:**
+**With `--chroot=/tmp/chroot`:**
 ```bash
 # Symlinks created INSIDE the prefix directory
 /tmp/chroot/usr/bin/vim → /kod/store/vim/.../usr/bin/vim
@@ -533,13 +533,13 @@ The `--symlink-prefix` flag accomplishes two critical tasks:
 
 **Without prefix stripping:**
 ```bash
-# Installed with --symlink-prefix=/tmp/demo
+# Installed with --chroot=/tmp/demo
 Symlink target: /tmp/demo/kod/store/vim/9.0.0-1/usr/bin/vim
 ```
 
 **With prefix stripping:**
 ```bash
-# Installed with --symlink-prefix=/tmp/demo
+# Installed with --chroot=/tmp/demo
 Symlink target: /kod/store/vim/9.0.0-1/usr/bin/vim  # Prefix stripped!
 ```
 
@@ -547,7 +547,7 @@ Symlink target: /kod/store/vim/9.0.0-1/usr/bin/vim  # Prefix stripped!
 
 ```bash
 # Command
-sudo chisel install --symlink-prefix=/tmp/chroot gcc
+sudo chisel install --chroot=/tmp/chroot gcc
 
 # What gets created
 Step 1: Extract package
@@ -612,7 +612,7 @@ All paths are relative to the prefix directory, making it truly portable across:
 set -e
 
 # Initialize Chisel packages
-chisel install --symlink-prefix=$PWD/build \
+chisel install --chroot=$PWD/build \
   gcc cmake ninja python3 doxygen
 
 export PATH=$PWD/build/kod/wrappers:$PATH
@@ -638,7 +638,7 @@ cd docs && doxygen Doxyfile && cd ..
 | Feature | Use Case 1: Development | Use Case 2: Per-User | Use Case 3: Container/CI |
 |---------|------------------------|----------------------|--------------------------|
 | **Requires Sudo** | Yes (system-wide) | No (user-only) | Varies (may be containerized) |
-| **Location** | `/kod/` global | `~/.local/share/chisel/` | Configurable with `--symlink-prefix` |
+| **Location** | `/kod/` global | `~/.local/share/chisel/` | Configurable with `--chroot` |
 | **Isolation** | System-wide | Per-user | Per-environment/container |
 | **Key Feature** | Latest tools | No-root access | Portable paths |
 | **Primary Users** | Developers | Regular users | DevOps/CI/CD |
@@ -675,13 +675,13 @@ chisel-user list
 ### For Container/CI/CD
 ```bash
 # Install with prefix stripping
-sudo chisel install --symlink-prefix=/tmp/build gcc cmake
+sudo chisel install --chroot=/tmp/build gcc cmake
 
 # Use in CI pipeline
 export PATH=/tmp/build/kod/wrappers:$PATH
 ```
 
-**See:** [USER-GUIDE.md - Chroot Support](./user-guides/USER-GUIDE.md#chroot-support-with-symlink-prefix-stripping)
+**See:** [USER-GUIDE.md - Chroot Support](./user-guides/USER-GUIDE.md#chroot-support-with-chroot-stripping)
 
 ---
 

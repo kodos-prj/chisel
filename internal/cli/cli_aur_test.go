@@ -468,8 +468,8 @@ func contains(s, substr string) bool {
 
 // ==================== SYMLINK-PREFIX TESTS ====================
 
-// TestInstallWithSymlinkPrefix tests that --symlink-prefix flag is parsed correctly
-func TestInstallWithSymlinkPrefix(t *testing.T) {
+// TestInstallWithChroot tests that --chroot flag is parsed correctly
+func TestInstallWithChroot(t *testing.T) {
 	tests := []struct {
 		name             string
 		args             []string
@@ -477,16 +477,16 @@ func TestInstallWithSymlinkPrefix(t *testing.T) {
 	}{
 		{
 			name:             "equals-separated syntax",
-			args:             []string{"--symlink-prefix=/tmp/chroot", "vim"},
+			args:             []string{"--chroot=/tmp/chroot", "vim"},
 			expectedPrefix:   "/tmp/chroot",
 		},
 		{
 			name:             "space-separated syntax",
-			args:             []string{"--symlink-prefix", "/tmp/demo", "gcc"},
+			args:             []string{"--chroot", "/tmp/demo", "gcc"},
 			expectedPrefix:   "/tmp/demo",
 		},
 		{
-			name:             "no symlink-prefix",
+			name:             "no chroot",
 			args:             []string{"vim"},
 			expectedPrefix:   "",
 		},
@@ -500,39 +500,39 @@ func TestInstallWithSymlinkPrefix(t *testing.T) {
 			
 			for i := 0; i < len(args); i++ {
 				arg := args[i]
-				if strings.HasPrefix(arg, "--symlink-prefix=") {
-					opts.SymlinkPrefix = strings.TrimPrefix(arg, "--symlink-prefix=")
-				} else if arg == "--symlink-prefix" {
+				if strings.HasPrefix(arg, "--chroot=") {
+					opts.Chroot = strings.TrimPrefix(arg, "--chroot=")
+				} else if arg == "--chroot" {
 					if i+1 < len(args) {
 						i++
-						opts.SymlinkPrefix = args[i]
+						opts.Chroot = args[i]
 					}
 				}
 			}
 			
-			if opts.SymlinkPrefix != tt.expectedPrefix {
-				t.Errorf("symlink-prefix not parsed correctly: got %q, want %q", opts.SymlinkPrefix, tt.expectedPrefix)
+			if opts.Chroot != tt.expectedPrefix {
+				t.Errorf("chroot not parsed correctly: got %q, want %q", opts.Chroot, tt.expectedPrefix)
 			}
 		})
 	}
 }
 
-// TestInstallOptionsSymlinkPrefix tests SymlinkPrefix field initialization
-func TestInstallOptionsSymlinkPrefix(t *testing.T) {
+// TestInstallOptionsChroot tests Chroot field initialization
+func TestInstallOptionsChroot(t *testing.T) {
 	opts := &InstallOptions{}
 	
-	if opts.SymlinkPrefix != "" {
-		t.Errorf("SymlinkPrefix should default to empty string, got %q", opts.SymlinkPrefix)
+	if opts.Chroot != "" {
+		t.Errorf("Chroot should default to empty string, got %q", opts.Chroot)
 	}
 	
-	opts.SymlinkPrefix = "/tmp/chroot"
-	if opts.SymlinkPrefix != "/tmp/chroot" {
-		t.Errorf("SymlinkPrefix not set correctly: got %q, want %q", opts.SymlinkPrefix, "/tmp/chroot")
+	opts.Chroot = "/tmp/chroot"
+	if opts.Chroot != "/tmp/chroot" {
+		t.Errorf("Chroot not set correctly: got %q, want %q", opts.Chroot, "/tmp/chroot")
 	}
 }
 
-// TestSymlinkPrefixStripCorrectly tests that symlink.StripPrefix strips paths correctly
-func TestSymlinkPrefixStripCorrectly(t *testing.T) {
+// TestChrootStripCorrectly tests that symlink.StripPrefix strips paths correctly
+func TestChrootStripCorrectly(t *testing.T) {
 	tests := []struct {
 		name        string
 		path        string
@@ -597,10 +597,10 @@ func TestSymlinkPrefixStripCorrectly(t *testing.T) {
 	}
 }
 
-// TestSymlinkTargetsAreRelativePaths tests that symlinks point to relative paths when using --symlink-prefix
+// TestSymlinkTargetsAreRelativePaths tests that symlinks point to relative paths when using --chroot
 func TestSymlinkTargetsAreRelativePaths(t *testing.T) {
 	// This test verifies the behavior of symlink target stripping
-	// When --symlink-prefix=/tmp/chroot is used:
+	// When --chroot=/tmp/chroot is used:
 	// - Symlink location: /tmp/chroot/usr/bin/vim
 	// - Symlink target (should be): /kod/store/vim/.../usr/bin/vim (relative path)
 	// - NOT: /tmp/chroot/kod/store/vim/.../usr/bin/vim (absolute within prefix)
@@ -656,8 +656,8 @@ func TestSymlinkTargetsAreRelativePaths(t *testing.T) {
 	}
 }
 
-// TestInstallOptionsSymlinkPrefixWithOtherFlags tests --symlink-prefix combined with other flags
-func TestInstallOptionsSymlinkPrefixWithOtherFlags(t *testing.T) {
+// TestInstallOptionsChrootWithOtherFlags tests --chroot combined with other flags
+func TestInstallOptionsChrootWithOtherFlags(t *testing.T) {
 	tests := []struct {
 		name              string
 		symlink           string
@@ -670,21 +670,21 @@ func TestInstallOptionsSymlinkPrefixWithOtherFlags(t *testing.T) {
 		expectedNoDeps    bool
 	}{
 		{
-			name:              "symlink-prefix with --force",
+			name:              "chroot with --force",
 			symlink:           "/tmp/chroot",
 			force:             true,
 			expectedSymlink:   "/tmp/chroot",
 			expectedForce:     true,
 		},
 		{
-			name:              "symlink-prefix with --no-symlink",
+			name:              "chroot with --no-symlink",
 			symlink:           "/tmp/chroot",
 			noSymlink:         true,
 			expectedSymlink:   "/tmp/chroot",
 			expectedNoSymlink: true,
 		},
 		{
-			name:            "symlink-prefix with --no-deps",
+			name:            "chroot with --no-deps",
 			symlink:         "/tmp/chroot",
 			noDeps:          true,
 			expectedSymlink: "/tmp/chroot",
@@ -706,14 +706,14 @@ func TestInstallOptionsSymlinkPrefixWithOtherFlags(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			opts := &InstallOptions{
-				SymlinkPrefix: tt.symlink,
+				Chroot: tt.symlink,
 				NoSymlink:     tt.noSymlink,
 				Force:         tt.force,
 				NoDeps:        tt.noDeps,
 			}
 
-			if opts.SymlinkPrefix != tt.expectedSymlink {
-				t.Errorf("SymlinkPrefix: got %q, want %q", opts.SymlinkPrefix, tt.expectedSymlink)
+			if opts.Chroot != tt.expectedSymlink {
+				t.Errorf("Chroot: got %q, want %q", opts.Chroot, tt.expectedSymlink)
 			}
 			if opts.NoSymlink != tt.expectedNoSymlink {
 				t.Errorf("NoSymlink: got %v, want %v", opts.NoSymlink, tt.expectedNoSymlink)
@@ -728,8 +728,8 @@ func TestInstallOptionsSymlinkPrefixWithOtherFlags(t *testing.T) {
 	}
 }
 
-// TestInstallSymlinkTargetsWithAndWithoutPrefix tests that symlink targets differ based on --symlink-prefix
-func TestInstallSymlinkTargetsWithAndWithoutPrefix(t *testing.T) {
+// TestInstallSymlinkTargetsWithAndWithoutChroot tests that symlink targets differ based on --chroot
+func TestInstallSymlinkTargetsWithAndWithoutChroot(t *testing.T) {
 	tests := []struct {
 		name              string
 		usePrefix         bool
@@ -763,7 +763,7 @@ func TestInstallSymlinkTargetsWithAndWithoutPrefix(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			opts := &InstallOptions{
-				SymlinkPrefix: tt.prefix,
+				Chroot: tt.prefix,
 			}
 
 			// Simulate the symlink target logic from install.go lines 377-384
@@ -776,8 +776,8 @@ func TestInstallSymlinkTargetsWithAndWithoutPrefix(t *testing.T) {
 
 			var targetPath string
 			if strings.HasPrefix(filePath, "usr/bin/") || strings.HasPrefix(filePath, "usr/sbin/") {
-				if opts.SymlinkPrefix != "" {
-					// With symlink-prefix, point directly to package files
+				if opts.Chroot != "" {
+					// With chroot, point directly to package files
 					targetPath = filepath.Join(storeRoot, pkgName, version, filePath)
 				} else {
 					// Normal mode: point to wrapper
@@ -794,7 +794,7 @@ func TestInstallSymlinkTargetsWithAndWithoutPrefix(t *testing.T) {
 			if tt.usePrefix {
 				// Should point to store, not wrappers
 				if strings.Contains(targetPath, "/kod/wrappers/") {
-					t.Errorf("with --symlink-prefix, symlink should NOT point to wrapper: %q", targetPath)
+					t.Errorf("with --chroot, symlink should NOT point to wrapper: %q", targetPath)
 				}
 				// Should contain the full path
 				if !strings.Contains(targetPath, version) {
@@ -806,7 +806,7 @@ func TestInstallSymlinkTargetsWithAndWithoutPrefix(t *testing.T) {
 			if !tt.usePrefix {
 				// Should point to wrappers
 				if !strings.Contains(targetPath, "/kod/wrappers/") {
-					t.Errorf("without --symlink-prefix, symlink should point to wrapper: %q", targetPath)
+					t.Errorf("without --chroot, symlink should point to wrapper: %q", targetPath)
 				}
 				// Should NOT contain version
 				if strings.Contains(targetPath, version) {
@@ -817,8 +817,8 @@ func TestInstallSymlinkTargetsWithAndWithoutPrefix(t *testing.T) {
 	}
 }
 
-// TestExecutableSymlinkBehaviorWithPrefix tests that usr/bin and usr/sbin are handled correctly
-func TestExecutableSymlinkBehaviorWithPrefix(t *testing.T) {
+// TestExecutableSymlinkBehaviorWithChroot tests that usr/bin and usr/sbin are handled correctly
+func TestExecutableSymlinkBehaviorWithChroot(t *testing.T) {
 	tests := []struct {
 		name           string
 		filePath       string
@@ -873,10 +873,10 @@ func TestExecutableSymlinkBehaviorWithPrefix(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			opts := &InstallOptions{
-				SymlinkPrefix: "",
+				Chroot: "",
 			}
 			if tt.usePrefix {
-				opts.SymlinkPrefix = "/tmp/chroot"
+				opts.Chroot = "/tmp/chroot"
 			}
 
 			// Simulate the logic from install.go
@@ -888,7 +888,7 @@ func TestExecutableSymlinkBehaviorWithPrefix(t *testing.T) {
 
 			var targetPath string
 			if strings.HasPrefix(tt.filePath, "usr/bin/") || strings.HasPrefix(tt.filePath, "usr/sbin/") {
-				if opts.SymlinkPrefix != "" {
+				if opts.Chroot != "" {
 					targetPath = filepath.Join(storeRoot, pkgName, version, tt.filePath)
 				} else {
 					targetPath = filepath.Join(wrapperDir, fileName)
@@ -905,9 +905,9 @@ func TestExecutableSymlinkBehaviorWithPrefix(t *testing.T) {
 	}
 }
 
-// TestAutoSetBaseDirWithSymlinkPrefix tests that --base-dir is automatically set to {prefix}/kod
-// when --symlink-prefix is used without an explicit --base-dir
-func TestAutoSetBaseDirWithSymlinkPrefix(t *testing.T) {
+// TestAutoSetBaseDirWithChroot tests that --base-dir is automatically set to {prefix}/kod
+// when --chroot is used without an explicit --base-dir
+func TestAutoSetBaseDirWithChroot(t *testing.T) {
 	cfg := &config.Config{
 		BaseDir:    "/kod",
 		StoreRoot:  "/kod/store",
@@ -921,14 +921,14 @@ func TestAutoSetBaseDirWithSymlinkPrefix(t *testing.T) {
 		t.Errorf("baseDirExplicit should be false, got %v", cmd.BaseDirExplicit())
 	}
 
-	// Simulate what Run() does when --symlink-prefix is provided
+	// Simulate what Run() does when --chroot is provided
 	opts := &InstallOptions{
-		SymlinkPrefix: "/tmp/chroot",
+		Chroot: "/tmp/chroot",
 	}
 
 	// Auto-set logic (as in Run method)
-	if opts.SymlinkPrefix != "" && !cmd.BaseDirExplicit() {
-		newBaseDir := filepath.Join(opts.SymlinkPrefix, "kod")
+	if opts.Chroot != "" && !cmd.BaseDirExplicit() {
+		newBaseDir := filepath.Join(opts.Chroot, "kod")
 		cmd.config.BaseDir = newBaseDir
 		cmd.config.UpdateDerivedPaths()
 	}
@@ -957,14 +957,14 @@ func TestBaseDirNotAutoSetWhenExplicit(t *testing.T) {
 
 	originalBaseDir := cmd.config.BaseDir
 
-	// Simulate what Run() does when both --symlink-prefix and --base-dir are provided
+	// Simulate what Run() does when both --chroot and --base-dir are provided
 	opts := &InstallOptions{
-		SymlinkPrefix: "/tmp/chroot",
+		Chroot: "/tmp/chroot",
 	}
 
 	// Auto-set logic (as in Run method) - should NOT apply when baseDirExplicit is true
-	if opts.SymlinkPrefix != "" && !cmd.BaseDirExplicit() {
-		newBaseDir := filepath.Join(opts.SymlinkPrefix, "kod")
+	if opts.Chroot != "" && !cmd.BaseDirExplicit() {
+		newBaseDir := filepath.Join(opts.Chroot, "kod")
 		cmd.config.BaseDir = newBaseDir
 		cmd.config.UpdateDerivedPaths()
 	}
@@ -975,8 +975,8 @@ func TestBaseDirNotAutoSetWhenExplicit(t *testing.T) {
 	}
 }
 
-// TestBaseDirNotAutoSetWithoutSymlinkPrefix tests that --base-dir is NOT auto-set when --symlink-prefix is not provided
-func TestBaseDirNotAutoSetWithoutSymlinkPrefix(t *testing.T) {
+// TestBaseDirNotAutoSetWithoutChroot tests that --base-dir is NOT auto-set when --chroot is not provided
+func TestBaseDirNotAutoSetWithoutChroot(t *testing.T) {
 	cfg := &config.Config{
 		BaseDir:    "/kod",
 		StoreRoot:  "/kod/store",
@@ -987,21 +987,21 @@ func TestBaseDirNotAutoSetWithoutSymlinkPrefix(t *testing.T) {
 
 	originalBaseDir := cmd.config.BaseDir
 
-	// Simulate Run() behavior when --symlink-prefix is NOT provided
+	// Simulate Run() behavior when --chroot is NOT provided
 	opts := &InstallOptions{
-		SymlinkPrefix: "", // No prefix
+		Chroot: "", // No prefix
 	}
 
-	// Auto-set logic (as in Run method) - should NOT apply when SymlinkPrefix is empty
-	if opts.SymlinkPrefix != "" && !cmd.BaseDirExplicit() {
-		newBaseDir := filepath.Join(opts.SymlinkPrefix, "kod")
+	// Auto-set logic (as in Run method) - should NOT apply when Chroot is empty
+	if opts.Chroot != "" && !cmd.BaseDirExplicit() {
+		newBaseDir := filepath.Join(opts.Chroot, "kod")
 		cmd.config.BaseDir = newBaseDir
 		cmd.config.UpdateDerivedPaths()
 	}
 
 	// Verify BaseDir was NOT changed
 	if cmd.config.BaseDir != originalBaseDir {
-		t.Errorf("BaseDir should not be auto-set without --symlink-prefix: expected %q, got %q", originalBaseDir, cmd.config.BaseDir)
+		t.Errorf("BaseDir should not be auto-set without --chroot: expected %q, got %q", originalBaseDir, cmd.config.BaseDir)
 	}
 }
 

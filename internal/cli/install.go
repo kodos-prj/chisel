@@ -79,12 +79,12 @@ func (i *InstallCommand) BaseDirExplicit() bool {
 
 // InstallOptions holds command-line options for install.
 type InstallOptions struct {
-	NoDeps        bool
-	NoExtract     bool
-	NoSymlink     bool
-	Force         bool
-	Source        string // "", "aur", or "official"
-	SymlinkPrefix string // Prefix to strip from symlink targets (e.g., /tmp for chroot)
+	NoDeps    bool
+	NoExtract bool
+	NoSymlink bool
+	Force     bool
+	Source    string // "", "aur", or "official"
+	Chroot    string // Chroot directory path for creating self-contained chroot environments
 }
 
 // Run executes the install command.
@@ -96,7 +96,7 @@ type InstallOptions struct {
 //	--no-extract        Skip extraction (assume already in store)
 //	--no-symlink        Skip symlink creation
 //	--force             Force overwrite of existing symlinks
-//	--symlink-prefix    Strip prefix from symlink targets (e.g., /tmp for chroot)
+//	--chroot            Chroot directory path for self-contained installation
 //
 // Source Constraint Behavior:
 //   - Root packages: Respect --source= constraint
@@ -109,7 +109,7 @@ type InstallOptions struct {
 //	chisel install yay                     # Auto-detect (official first, then AUR)
 //	chisel install --source=aur yay        # AUR only
 //	chisel install --source=official firefox  # Official only
-//	chisel install --symlink-prefix=/tmp vim  # Install with symlink prefix stripping
+//	chisel install --chroot=/tmp/chroot vim  # Install into self-contained chroot
 func (i *InstallCommand) Run(args []string) error {
 	// Parse options and package names
 	opts := InstallOptions{Source: ""}
@@ -128,17 +128,17 @@ func (i *InstallCommand) Run(args []string) error {
 				return fmt.Errorf("cannot specify multiple --source flags")
 			}
 			opts.Source = source
-		case strings.HasPrefix(arg, "--symlink-prefix="):
-			// Parse --symlink-prefix= flag
-			prefix := strings.TrimPrefix(arg, "--symlink-prefix=")
-			opts.SymlinkPrefix = prefix
-		case arg == "--symlink-prefix":
-			// Parse --symlink-prefix VALUE flag (space-separated)
+		case strings.HasPrefix(arg, "--chroot="):
+			// Parse --chroot= flag
+			chroot := strings.TrimPrefix(arg, "--chroot=")
+			opts.Chroot = chroot
+		case arg == "--chroot":
+			// Parse --chroot VALUE flag (space-separated)
 			if idx+1 >= len(args) {
-				return fmt.Errorf("--symlink-prefix requires a value")
+				return fmt.Errorf("--chroot requires a value")
 			}
 			idx++ // Move to next argument
-			opts.SymlinkPrefix = args[idx]
+			opts.Chroot = args[idx]
 		case arg == "--no-deps":
 			opts.NoDeps = true
 		case arg == "--no-extract":
@@ -156,12 +156,12 @@ func (i *InstallCommand) Run(args []string) error {
 		return fmt.Errorf("package name required")
 	}
 
-	// Auto-set BaseDir to {prefix}/kod when --symlink-prefix is used and --base-dir was not explicitly provided
-	if opts.SymlinkPrefix != "" && !i.baseDirExplicit {
-		newBaseDir := filepath.Join(opts.SymlinkPrefix, "kod")
+	// Auto-set BaseDir to {chroot}/kod when --chroot is used and --base-dir was not explicitly provided
+	if opts.Chroot != "" && !i.baseDirExplicit {
+		newBaseDir := filepath.Join(opts.Chroot, "kod")
 		i.config.BaseDir = newBaseDir
 		i.config.UpdateDerivedPaths()
-		fmt.Printf("Auto-setting --base-dir=%s (based on --symlink-prefix)\n", newBaseDir)
+		fmt.Printf("Auto-setting --base-dir=%s (based on --chroot)\n", newBaseDir)
 	}
 
 	// Initialize ALPM client
@@ -349,10 +349,10 @@ func (i *InstallCommand) Run(args []string) error {
 	// Create symlinks
 	symlinkDir := i.symlinkDir
 	if symlinkDir == "" {
-		// If symlink-prefix is specified, use it as symlink root for creating symlinks
-		// inside the chroot/container/workspace. Otherwise use config default.
-		if opts.SymlinkPrefix != "" {
-			symlinkDir = opts.SymlinkPrefix
+		// If --chroot is specified, use it as symlink root for creating symlinks
+		// inside the chroot. Otherwise use config default.
+		if opts.Chroot != "" {
+			symlinkDir = opts.Chroot
 		} else {
 			symlinkDir = i.config.SymlinkRoot
 		}
@@ -406,21 +406,21 @@ func (i *InstallCommand) Run(args []string) error {
 					symlinkTargetDir := filepath.Join(i.config.StoreRoot, pkg.Name, pkg.Version, filepath.Dir(filePath))
 					targetPath = filepath.Join(symlinkTargetDir, originalTarget)
 			} else if strings.HasPrefix(filePath, "usr/bin/") || strings.HasPrefix(filePath, "usr/sbin/") {
-				if opts.SymlinkPrefix != "" {
-					// With symlink-prefix, point directly to package files (no wrapper needed)
+				if opts.Chroot != "" {
+					// With --chroot, point directly to package files (no wrapper needed)
 					targetPath = filepath.Join(i.config.StoreRoot, pkg.Name, pkg.Version, filePath)
 				} else {
 					// Normal mode: point to wrapper for library isolation
 					targetPath = filepath.Join(i.config.WrapperDir, fileName)
 				}
-				} else {
-					// Regular file: point to storage
-					targetPath = filepath.Join(i.config.StoreRoot, pkg.Name, pkg.Version, filePath)
-				}
+			} else {
+				// Regular file: point to storage
+				targetPath = filepath.Join(i.config.StoreRoot, pkg.Name, pkg.Version, filePath)
+			}
 
-				// Apply symlink prefix stripping if configured
-				if opts.SymlinkPrefix != "" {
-					strippedPath, err := symlink.StripPrefix(targetPath, opts.SymlinkPrefix)
+			// Apply symlink target transformation if --chroot is configured
+			if opts.Chroot != "" {
+					strippedPath, err := symlink.StripPrefix(targetPath, opts.Chroot)
 					if err != nil {
 						fmt.Fprintf(os.Stderr, "  ! Warning: Failed to strip prefix from %s: %v\n", targetPath, err)
 						continue
@@ -468,8 +468,8 @@ func (i *InstallCommand) Run(args []string) error {
 		}
 	}
 
-	// Generate wrapper scripts (skip when using --symlink-prefix, as symlinks point directly to files)
-	if opts.SymlinkPrefix == "" {
+	// Generate wrapper scripts (skip when using --chroot, as symlinks point directly to files)
+	if opts.Chroot == "" {
 		fmt.Println("\nGenerating wrapper scripts...")
 		wrapperGen := wrapper.NewGenerator(i.config.StoreRoot, i.config.WrapperDir, i.config.SymlinkRoot)
 
@@ -522,7 +522,7 @@ func (i *InstallCommand) Run(args []string) error {
 			}
 		}
 	} else {
-		fmt.Println("\n✓ Skipping wrapper generation (--symlink-prefix makes wrappers unnecessary)")
+		fmt.Println("\n✓ Skipping wrapper generation (--chroot makes wrappers unnecessary)")
 	}
 
 	// Update registry
