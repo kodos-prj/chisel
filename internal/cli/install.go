@@ -374,9 +374,14 @@ func (i *InstallCommand) Run(args []string) error {
 					// Point it to the storage location: /stor/pkg/version/path
 					symlinkTargetDir := filepath.Join(i.config.StoreRoot, pkg.Name, pkg.Version, filepath.Dir(filePath))
 					targetPath = filepath.Join(symlinkTargetDir, originalTarget)
-				} else if strings.HasPrefix(filePath, "usr/bin/") || strings.HasPrefix(filePath, "usr/sbin/") {
-					// Regular executable: point to wrapper
+			} else if strings.HasPrefix(filePath, "usr/bin/") || strings.HasPrefix(filePath, "usr/sbin/") {
+				if opts.SymlinkPrefix != "" {
+					// With symlink-prefix, point directly to package files (no wrapper needed)
+					targetPath = filepath.Join(i.config.StoreRoot, pkg.Name, pkg.Version, filePath)
+				} else {
+					// Normal mode: point to wrapper for library isolation
 					targetPath = filepath.Join(i.config.WrapperDir, fileName)
+				}
 				} else {
 					// Regular file: point to storage
 					targetPath = filepath.Join(i.config.StoreRoot, pkg.Name, pkg.Version, filePath)
@@ -432,62 +437,61 @@ func (i *InstallCommand) Run(args []string) error {
 		}
 	}
 
-	// Generate wrapper scripts
-	fmt.Println("\nGenerating wrapper scripts...")
-	var wrapperGen *wrapper.Generator
-	if opts.SymlinkPrefix != "" {
-		wrapperGen = wrapper.NewGeneratorWithPrefix(i.config.StoreRoot, i.config.WrapperDir, i.config.SymlinkRoot, opts.SymlinkPrefix)
-	} else {
-		wrapperGen = wrapper.NewGenerator(i.config.StoreRoot, i.config.WrapperDir, i.config.SymlinkRoot)
-	}
+	// Generate wrapper scripts (skip when using --symlink-prefix, as symlinks point directly to files)
+	if opts.SymlinkPrefix == "" {
+		fmt.Println("\nGenerating wrapper scripts...")
+		wrapperGen := wrapper.NewGenerator(i.config.StoreRoot, i.config.WrapperDir, i.config.SymlinkRoot)
 
-	// Build a map of package versions for dependency resolution
-	depVersionMap := make(map[string]string)
-	for _, pkg := range toInstall {
-		depVersionMap[pkg.Name] = pkg.Version
-	}
-
-	for _, pkg := range toInstall {
-		libDirs, err := wrapperGen.DiscoverLibraries(pkg.Name, pkg.Version)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "  ! Warning: Failed to discover libraries for %s: %v\n", pkg.Name, err)
-			continue
+		// Build a map of package versions for dependency resolution
+		depVersionMap := make(map[string]string)
+		for _, pkg := range toInstall {
+			depVersionMap[pkg.Name] = pkg.Version
 		}
 
-		// Convert map to slice for generating wrappers
-		var libDirsList []string
-		for dir := range libDirs {
-			libDirsList = append(libDirsList, dir)
-		}
-
-		// Get dependencies for this package (empty for now with MixedResolver)
-		var dependencies []string
-		// TODO: Track dependencies from MixedResolver in future optimization
-
-		// Generate wrappers only for standard executable locations (usr/bin, usr/sbin)
-		standardExecDirs := []string{"usr/bin", "usr/sbin"}
-		for _, dir := range standardExecDirs {
-			pkgExecDir := filepath.Join(i.config.StoreRoot, pkg.Name, pkg.Version, dir)
-			if _, err := os.Stat(pkgExecDir); err != nil {
-				continue
-			}
-
-			// Get list of executables
-			entries, err := os.ReadDir(pkgExecDir)
+		for _, pkg := range toInstall {
+			libDirs, err := wrapperGen.DiscoverLibraries(pkg.Name, pkg.Version)
 			if err != nil {
+				fmt.Fprintf(os.Stderr, "  ! Warning: Failed to discover libraries for %s: %v\n", pkg.Name, err)
 				continue
 			}
 
-			// Generate wrapper for each executable
-			for _, entry := range entries {
-				if !entry.IsDir() {
-					cmdName := entry.Name()
-					if err := wrapperGen.GenerateWrapperWithDeps(cmdName, pkg.Name, pkg.Version, libDirsList, dependencies, depVersionMap); err != nil {
-						fmt.Fprintf(os.Stderr, "  ! Warning: Failed to generate wrapper for %s: %v\n", cmdName, err)
+			// Convert map to slice for generating wrappers
+			var libDirsList []string
+			for dir := range libDirs {
+				libDirsList = append(libDirsList, dir)
+			}
+
+			// Get dependencies for this package (empty for now with MixedResolver)
+			var dependencies []string
+			// TODO: Track dependencies from MixedResolver in future optimization
+
+			// Generate wrappers only for standard executable locations (usr/bin, usr/sbin)
+			standardExecDirs := []string{"usr/bin", "usr/sbin"}
+			for _, dir := range standardExecDirs {
+				pkgExecDir := filepath.Join(i.config.StoreRoot, pkg.Name, pkg.Version, dir)
+				if _, err := os.Stat(pkgExecDir); err != nil {
+					continue
+				}
+
+				// Get list of executables
+				entries, err := os.ReadDir(pkgExecDir)
+				if err != nil {
+					continue
+				}
+
+				// Generate wrapper for each executable
+				for _, entry := range entries {
+					if !entry.IsDir() {
+						cmdName := entry.Name()
+						if err := wrapperGen.GenerateWrapperWithDeps(cmdName, pkg.Name, pkg.Version, libDirsList, dependencies, depVersionMap); err != nil {
+							fmt.Fprintf(os.Stderr, "  ! Warning: Failed to generate wrapper for %s: %v\n", cmdName, err)
+						}
 					}
 				}
 			}
 		}
+	} else {
+		fmt.Println("\n✓ Skipping wrapper generation (--symlink-prefix makes wrappers unnecessary)")
 	}
 
 	// Update registry

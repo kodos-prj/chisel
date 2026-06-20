@@ -594,6 +594,7 @@ All paths are relative to the prefix directory, making it truly portable across:
 | **Easy Cleanup** | Just remove the prefix directory |
 | **No Containers** | Direct execution in chroots; optional Docker integration |
 | **Minimal Overhead** | Faster than Docker, lighter than VMs |
+| **Self-Contained** | Symlinks point directly to package files; no wrapper scripts needed |
 
 ### Who Benefits
 

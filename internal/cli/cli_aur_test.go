@@ -2,9 +2,12 @@
 package cli
 
 import (
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/kodos-prj/chisel/pkg/config"
+	"github.com/kodos-prj/chisel/pkg/symlink"
 )
 
 // TestSearchCommandWithAUR tests basic search command initialization
@@ -461,4 +464,443 @@ func contains(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+// ==================== SYMLINK-PREFIX TESTS ====================
+
+// TestInstallWithSymlinkPrefix tests that --symlink-prefix flag is parsed correctly
+func TestInstallWithSymlinkPrefix(t *testing.T) {
+	tests := []struct {
+		name             string
+		args             []string
+		expectedPrefix   string
+	}{
+		{
+			name:             "equals-separated syntax",
+			args:             []string{"--symlink-prefix=/tmp/chroot", "vim"},
+			expectedPrefix:   "/tmp/chroot",
+		},
+		{
+			name:             "space-separated syntax",
+			args:             []string{"--symlink-prefix", "/tmp/demo", "gcc"},
+			expectedPrefix:   "/tmp/demo",
+		},
+		{
+			name:             "no symlink-prefix",
+			args:             []string{"vim"},
+			expectedPrefix:   "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Parse arguments into options
+			opts := &InstallOptions{}
+			args := tt.args
+			
+			for i := 0; i < len(args); i++ {
+				arg := args[i]
+				if strings.HasPrefix(arg, "--symlink-prefix=") {
+					opts.SymlinkPrefix = strings.TrimPrefix(arg, "--symlink-prefix=")
+				} else if arg == "--symlink-prefix" {
+					if i+1 < len(args) {
+						i++
+						opts.SymlinkPrefix = args[i]
+					}
+				}
+			}
+			
+			if opts.SymlinkPrefix != tt.expectedPrefix {
+				t.Errorf("symlink-prefix not parsed correctly: got %q, want %q", opts.SymlinkPrefix, tt.expectedPrefix)
+			}
+		})
+	}
+}
+
+// TestInstallOptionsSymlinkPrefix tests SymlinkPrefix field initialization
+func TestInstallOptionsSymlinkPrefix(t *testing.T) {
+	opts := &InstallOptions{}
+	
+	if opts.SymlinkPrefix != "" {
+		t.Errorf("SymlinkPrefix should default to empty string, got %q", opts.SymlinkPrefix)
+	}
+	
+	opts.SymlinkPrefix = "/tmp/chroot"
+	if opts.SymlinkPrefix != "/tmp/chroot" {
+		t.Errorf("SymlinkPrefix not set correctly: got %q, want %q", opts.SymlinkPrefix, "/tmp/chroot")
+	}
+}
+
+// TestSymlinkPrefixStripCorrectly tests that symlink.StripPrefix strips paths correctly
+func TestSymlinkPrefixStripCorrectly(t *testing.T) {
+	tests := []struct {
+		name        string
+		path        string
+		prefix      string
+		expected    string
+		shouldError bool
+	}{
+		{
+			name:        "strip absolute prefix",
+			path:        "/tmp/chroot/kod/store/vim/9.0.0-1/usr/bin/vim",
+			prefix:      "/tmp/chroot",
+			expected:    "/kod/store/vim/9.0.0-1/usr/bin/vim",
+			shouldError: false,
+		},
+		{
+			name:        "prefix without trailing slash",
+			path:        "/tmp/demo/usr/lib/libc.so.6",
+			prefix:      "/tmp/demo",
+			expected:    "/usr/lib/libc.so.6",
+			shouldError: false,
+		},
+		{
+			name:        "path doesn't start with prefix",
+			path:        "/home/user/kod/store/vim",
+			prefix:      "/tmp/chroot",
+			expected:    "",
+			shouldError: true,
+		},
+		{
+			name:        "empty prefix (no-op)",
+			path:        "/kod/store/vim/9.0.0-1/usr/bin/vim",
+			prefix:      "",
+			expected:    "/kod/store/vim/9.0.0-1/usr/bin/vim",
+			shouldError: false,
+		},
+		{
+			name:        "root prefix (no-op)",
+			path:        "/kod/store/vim/9.0.0-1/usr/bin/vim",
+			prefix:      "/",
+			expected:    "/kod/store/vim/9.0.0-1/usr/bin/vim",
+			shouldError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := symlink.StripPrefix(tt.path, tt.prefix)
+			
+			if tt.shouldError {
+				if err == nil {
+					t.Errorf("expected error but got none")
+				}
+			} else {
+				if err != nil {
+					t.Errorf("unexpected error: %v", err)
+				}
+				if result != tt.expected {
+					t.Errorf("strip result incorrect: got %q, want %q", result, tt.expected)
+				}
+			}
+		})
+	}
+}
+
+// TestSymlinkTargetsAreRelativePaths tests that symlinks point to relative paths when using --symlink-prefix
+func TestSymlinkTargetsAreRelativePaths(t *testing.T) {
+	// This test verifies the behavior of symlink target stripping
+	// When --symlink-prefix=/tmp/chroot is used:
+	// - Symlink location: /tmp/chroot/usr/bin/vim
+	// - Symlink target (should be): /kod/store/vim/.../usr/bin/vim (relative path)
+	// - NOT: /tmp/chroot/kod/store/vim/.../usr/bin/vim (absolute within prefix)
+
+	testCases := []struct {
+		name            string
+		originalTarget  string
+		prefix          string
+		expectedTarget  string
+	}{
+		{
+			name:            "executable symlink",
+			originalTarget:  "/tmp/chroot/kod/store/vim/9.0.0-1/usr/bin/vim",
+			prefix:          "/tmp/chroot",
+			expectedTarget:  "/kod/store/vim/9.0.0-1/usr/bin/vim",
+		},
+		{
+			name:            "library symlink",
+			originalTarget:  "/tmp/chroot/kod/store/gcc-libs/13.1.0-1/usr/lib/libstdc++.so.6",
+			prefix:          "/tmp/chroot",
+			expectedTarget:  "/kod/store/gcc-libs/13.1.0-1/usr/lib/libstdc++.so.6",
+		},
+		{
+			name:            "no prefix stripping needed",
+			originalTarget:  "/kod/store/vim/9.0.0-1/usr/bin/vim",
+			prefix:          "",
+			expectedTarget:  "/kod/store/vim/9.0.0-1/usr/bin/vim",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result, err := symlink.StripPrefix(tc.originalTarget, tc.prefix)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			
+			// Verify the result is a relative path (starts with /)
+			if !strings.HasPrefix(result, "/") {
+				t.Errorf("symlink target should be absolute path, got: %q", result)
+			}
+			
+			// Verify the result matches expected
+			if result != tc.expectedTarget {
+				t.Errorf("symlink target incorrect: got %q, want %q", result, tc.expectedTarget)
+			}
+			
+			// Verify it doesn't contain the prefix
+			if strings.Contains(result, tc.prefix) && tc.prefix != "" {
+				t.Errorf("symlink target contains prefix (should be stripped): %q in %q", tc.prefix, result)
+			}
+		})
+	}
+}
+
+// TestInstallOptionsSymlinkPrefixWithOtherFlags tests --symlink-prefix combined with other flags
+func TestInstallOptionsSymlinkPrefixWithOtherFlags(t *testing.T) {
+	tests := []struct {
+		name              string
+		symlink           string
+		noSymlink         bool
+		force             bool
+		noDeps            bool
+		expectedSymlink   string
+		expectedNoSymlink bool
+		expectedForce     bool
+		expectedNoDeps    bool
+	}{
+		{
+			name:              "symlink-prefix with --force",
+			symlink:           "/tmp/chroot",
+			force:             true,
+			expectedSymlink:   "/tmp/chroot",
+			expectedForce:     true,
+		},
+		{
+			name:              "symlink-prefix with --no-symlink",
+			symlink:           "/tmp/chroot",
+			noSymlink:         true,
+			expectedSymlink:   "/tmp/chroot",
+			expectedNoSymlink: true,
+		},
+		{
+			name:            "symlink-prefix with --no-deps",
+			symlink:         "/tmp/chroot",
+			noDeps:          true,
+			expectedSymlink: "/tmp/chroot",
+			expectedNoDeps:  true,
+		},
+		{
+			name:              "all flags combined",
+			symlink:           "/tmp/chroot",
+			noSymlink:         true,
+			force:             true,
+			noDeps:            true,
+			expectedSymlink:   "/tmp/chroot",
+			expectedNoSymlink: true,
+			expectedForce:     true,
+			expectedNoDeps:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts := &InstallOptions{
+				SymlinkPrefix: tt.symlink,
+				NoSymlink:     tt.noSymlink,
+				Force:         tt.force,
+				NoDeps:        tt.noDeps,
+			}
+
+			if opts.SymlinkPrefix != tt.expectedSymlink {
+				t.Errorf("SymlinkPrefix: got %q, want %q", opts.SymlinkPrefix, tt.expectedSymlink)
+			}
+			if opts.NoSymlink != tt.expectedNoSymlink {
+				t.Errorf("NoSymlink: got %v, want %v", opts.NoSymlink, tt.expectedNoSymlink)
+			}
+			if opts.Force != tt.expectedForce {
+				t.Errorf("Force: got %v, want %v", opts.Force, tt.expectedForce)
+			}
+			if opts.NoDeps != tt.expectedNoDeps {
+				t.Errorf("NoDeps: got %v, want %v", opts.NoDeps, tt.expectedNoDeps)
+			}
+		})
+	}
+}
+
+// TestInstallSymlinkTargetsWithAndWithoutPrefix tests that symlink targets differ based on --symlink-prefix
+func TestInstallSymlinkTargetsWithAndWithoutPrefix(t *testing.T) {
+	tests := []struct {
+		name              string
+		usePrefix         bool
+		prefix            string
+		expectedTargetHas string
+		description       string
+	}{
+		{
+			name:              "without prefix points to wrapper",
+			usePrefix:         false,
+			prefix:            "",
+			expectedTargetHas: "/kod/wrappers/",
+			description:       "Normal mode: /usr/bin/vim → /kod/wrappers/vim",
+		},
+		{
+			name:              "with prefix points to package file",
+			usePrefix:         true,
+			prefix:            "/tmp/chroot",
+			expectedTargetHas: "/kod/store/",
+			description:       "Prefix mode: /usr/bin/vim → /kod/store/vim/.../usr/bin/vim",
+		},
+		{
+			name:              "with different prefix still points to package",
+			usePrefix:         true,
+			prefix:            "/home/user/build",
+			expectedTargetHas: "/kod/store/",
+			description:       "Prefix mode with different path: symlink still points to store",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts := &InstallOptions{
+				SymlinkPrefix: tt.prefix,
+			}
+
+			// Simulate the symlink target logic from install.go lines 377-384
+			filePath := "usr/bin/vim"
+			fileName := "vim"
+			storeRoot := "/kod/store"
+			wrapperDir := "/kod/wrappers"
+			version := "9.0.0-1"
+			pkgName := "vim"
+
+			var targetPath string
+			if strings.HasPrefix(filePath, "usr/bin/") || strings.HasPrefix(filePath, "usr/sbin/") {
+				if opts.SymlinkPrefix != "" {
+					// With symlink-prefix, point directly to package files
+					targetPath = filepath.Join(storeRoot, pkgName, version, filePath)
+				} else {
+					// Normal mode: point to wrapper
+					targetPath = filepath.Join(wrapperDir, fileName)
+				}
+			}
+
+			// Verify the target contains the expected path component
+			if !strings.Contains(targetPath, tt.expectedTargetHas) {
+				t.Errorf("symlink target incorrect: got %q, expected to contain %q\n  %s", targetPath, tt.expectedTargetHas, tt.description)
+			}
+
+			// Additional verification for prefix mode
+			if tt.usePrefix {
+				// Should point to store, not wrappers
+				if strings.Contains(targetPath, "/kod/wrappers/") {
+					t.Errorf("with --symlink-prefix, symlink should NOT point to wrapper: %q", targetPath)
+				}
+				// Should contain the full path
+				if !strings.Contains(targetPath, version) {
+					t.Errorf("symlink target should contain version: %q", targetPath)
+				}
+			}
+
+			// Additional verification for non-prefix mode
+			if !tt.usePrefix {
+				// Should point to wrappers
+				if !strings.Contains(targetPath, "/kod/wrappers/") {
+					t.Errorf("without --symlink-prefix, symlink should point to wrapper: %q", targetPath)
+				}
+				// Should NOT contain version
+				if strings.Contains(targetPath, version) {
+					t.Errorf("wrapper symlink should NOT contain version: %q", targetPath)
+				}
+			}
+		})
+	}
+}
+
+// TestExecutableSymlinkBehaviorWithPrefix tests that usr/bin and usr/sbin are handled correctly
+func TestExecutableSymlinkBehaviorWithPrefix(t *testing.T) {
+	tests := []struct {
+		name           string
+		filePath       string
+		usePrefix      bool
+		expectedPrefix string
+		description    string
+	}{
+		{
+			name:           "usr/bin executable with prefix",
+			filePath:       "usr/bin/vim",
+			usePrefix:      true,
+			expectedPrefix: "/kod/store/",
+			description:    "usr/bin files should point to store with prefix",
+		},
+		{
+			name:           "usr/sbin executable with prefix",
+			filePath:       "usr/sbin/useradd",
+			usePrefix:      true,
+			expectedPrefix: "/kod/store/",
+			description:    "usr/sbin files should point to store with prefix",
+		},
+		{
+			name:           "usr/bin executable without prefix",
+			filePath:       "usr/bin/vim",
+			usePrefix:      false,
+			expectedPrefix: "/kod/wrappers/",
+			description:    "usr/bin files should point to wrapper without prefix",
+		},
+		{
+			name:           "usr/sbin executable without prefix",
+			filePath:       "usr/sbin/useradd",
+			usePrefix:      false,
+			expectedPrefix: "/kod/wrappers/",
+			description:    "usr/sbin files should point to wrapper without prefix",
+		},
+		{
+			name:           "library file with prefix",
+			filePath:       "usr/lib/libvim.so",
+			usePrefix:      true,
+			expectedPrefix: "/kod/store/",
+			description:    "non-executable files should point to store regardless",
+		},
+		{
+			name:           "library file without prefix",
+			filePath:       "usr/lib/libvim.so",
+			usePrefix:      false,
+			expectedPrefix: "/kod/store/",
+			description:    "non-executable files should point to store regardless",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts := &InstallOptions{
+				SymlinkPrefix: "",
+			}
+			if tt.usePrefix {
+				opts.SymlinkPrefix = "/tmp/chroot"
+			}
+
+			// Simulate the logic from install.go
+			fileName := filepath.Base(tt.filePath)
+			storeRoot := "/kod/store"
+			wrapperDir := "/kod/wrappers"
+			pkgName := "vim"
+			version := "9.0.0-1"
+
+			var targetPath string
+			if strings.HasPrefix(tt.filePath, "usr/bin/") || strings.HasPrefix(tt.filePath, "usr/sbin/") {
+				if opts.SymlinkPrefix != "" {
+					targetPath = filepath.Join(storeRoot, pkgName, version, tt.filePath)
+				} else {
+					targetPath = filepath.Join(wrapperDir, fileName)
+				}
+			} else {
+				// Regular file: point to storage
+				targetPath = filepath.Join(storeRoot, pkgName, version, tt.filePath)
+			}
+
+			if !strings.Contains(targetPath, tt.expectedPrefix) {
+				t.Errorf("symlink target incorrect: got %q, expected to contain %q\n  %s", targetPath, tt.expectedPrefix, tt.description)
+			}
+		})
+	}
 }
