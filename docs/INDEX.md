@@ -4,6 +4,7 @@ Welcome to Chisel documentation! This index helps you find what you're looking f
 
 ## For End Users
 
+- **[USE-CASES.md](USE-CASES.md)** - Comprehensive guide to Chisel's three main use cases with real-world scenarios
 - **[USER-GUIDE.md](user-guides/USER-GUIDE.md)** - Complete user guide for system and user-level package management
 - **[CONFIGURATION.md](reference/CONFIGURATION.md)** - Configuration file format and options
 - **[Quick Start](../README.md#quick-start)** - Get started quickly (in README)
@@ -47,6 +48,7 @@ docs/
 │   └── CONFIGURATION.md       # Configuration reference
 ├── user-guides/
 │   └── USER-GUIDE.md          # User guide
+├── USE-CASES.md               # Use cases guide
 ├── CHANGELOG.md               # Version history
 └── INDEX.md                   # This file
 ```

@@ -318,7 +318,13 @@ func (i *InstallCommand) Run(args []string) error {
 	// Create symlinks
 	symlinkDir := i.symlinkDir
 	if symlinkDir == "" {
-		symlinkDir = i.config.SymlinkRoot
+		// If symlink-prefix is specified, use it as symlink root for creating symlinks
+		// inside the chroot/container/workspace. Otherwise use config default.
+		if opts.SymlinkPrefix != "" {
+			symlinkDir = opts.SymlinkPrefix
+		} else {
+			symlinkDir = i.config.SymlinkRoot
+		}
 	}
 
 	if !opts.NoSymlink && symlinkDir != "" {

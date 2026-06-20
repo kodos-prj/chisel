@@ -271,38 +271,93 @@ When working on this project:
 
 ## Use Cases
 
-### Desktop Environment Installation
+Chisel solves three primary use cases:
+
+### 1. Development & Tooling
+Install cutting-edge development tools, compilers, build systems, and desktop environments on stable/outdated distributions.
+
+**Examples:**
 ```bash
-# Install complete GNOME desktop
-chisel install gnome
+# Development tools
+chisel install gcc git vim neovim base-devel
 
-# Or KDE Plasma
-chisel install kde-applications
+# Desktop environments
+chisel install gnome              # Complete GNOME (50+ packages)
+chisel install kde-applications   # Complete KDE Plasma
 
-# Or development tools
-chisel install base-devel
+# Specialized tools
+chisel install pro-audio          # Pro-audio production suite
+chisel install nodejs             # Latest Node.js (automatic official/AUR selection)
 ```
 
-### Development Tools
+**Who it's for:** Software developers, engineers, power users
+
+---
+
+### 2. Per-User Package Management
+Allow regular users to independently install and manage packages without root/sudo access, with complete isolation per user.
+
+**Examples:**
 ```bash
-# Install cutting-edge development packages
-chisel install gcc git vim neovim
+# One-time setup (no sudo needed)
+./chisel-user-init.sh
 
-# Install pro-audio tools
-chisel install pro-audio
+# User-level installation (no sudo required)
+chisel-user install vim nano curl
+chisel-user install gnome          # Install desktop environment
 
-# Get the latest Node.js from AUR
-chisel install nodejs  # Automatically uses official or AUR
+# User has isolated installation in ~/.local/share/chisel/
+chisel-user list
+chisel-user upgrade
+chisel-user cleanup
 ```
 
-### Container/Chroot Environments
-```bash
-# Install packages with adjusted paths for containers
-chisel install --symlink-prefix /opt/app vim
+**Who it's for:** Regular users, developers without sudo access, multi-user systems
 
-# Create portable package environments
-chisel install base-devel --symlink-prefix /mnt/build
+---
+
+### 3. Container/Chroot & CI/CD Environments
+Prepare and deploy portable, reproducible package environments for containerization, CI/CD pipelines, and cross-distribution compatibility.
+
+**Key capability:** `--symlink-prefix` creates symlinks **inside** the specified directory (not on host), enabling true portability.
+
+**Examples:**
+
+```bash
+# Development chroot with packages inside /tmp/dev-chroot
+mkdir /tmp/dev-chroot
+sudo chisel install --symlink-prefix=/tmp/dev-chroot gcc vim git
+
+# Verify symlinks are in the chroot
+ls -la /tmp/dev-chroot/usr/bin/gcc  # ✓ Exists
+
+# Use the chroot
+sudo chroot /tmp/dev-chroot /bin/bash
+gcc --version  # ✓ Works inside chroot!
+
+# CI/CD pipeline with consistent packages
+sudo chisel install --symlink-prefix=/mnt/build base-devel cmake ninja
+
+# Portable workspace
+mkdir ~/build-env
+chisel install --symlink-prefix=~/build-env gcc git make
+
+# Export for reproducibility
+tar czf build-env.tar.gz ~/build-env
+# Later: tar xzf build-env.tar.gz && cd build-env && chroot . /bin/bash
 ```
+
+**Key points:**
+- Symlinks created **inside** the prefix directory, not on host system
+- Works across any location, container registry, or CI runner
+- Same build environment on Ubuntu, Fedora, Debian, Arch
+- Easy cleanup: just `rm -rf` the prefix directory
+
+**Who it's for:** DevOps engineers, CI/CD system administrators, container builders
+
+---
+
+**For detailed information on each use case, see [USE-CASES.md](docs/USE-CASES.md)**
 
 ## License
 
