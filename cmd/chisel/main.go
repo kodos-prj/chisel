@@ -401,10 +401,23 @@ func handleRemove(args []string) {
 }
 
 func handleList(args []string) {
+	// Show help if --help flag is provided
+	for _, arg := range args {
+		if arg == "--help" || arg == "-h" {
+			fmt.Fprintln(os.Stderr, "Usage: chisel list [options]")
+			fmt.Fprintln(os.Stderr, "Options:")
+			fmt.Fprintln(os.Stderr, "  --verbose  Show detailed package information including configuration")
+			os.Exit(0)
+		}
+	}
+
 	// Check for --verbose flag
 	verbose := false
-	if len(args) > 0 && (args[0] == "--verbose" || args[0] == "-v") {
-		verbose = true
+	for _, arg := range args {
+		if arg == "--verbose" || arg == "-v" {
+			verbose = true
+			break
+		}
 	}
 
 	cfg := loadConfig()

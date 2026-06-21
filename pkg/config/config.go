@@ -151,6 +151,15 @@ func GetUserBaseDir() (string, error) {
 		return userBase, nil
 	}
 
+	// Check if running as root with /kod directory (likely a chroot)
+	// If /kod exists and we're root, prefer /kod over user home directory
+	if os.Getuid() == 0 {
+		if info, err := os.Stat("/kod"); err == nil && info.IsDir() {
+			// /kod exists and is a directory, use it as base dir (indicates chroot)
+			return "/kod", nil
+		}
+	}
+
 	// Check XDG_DATA_HOME
 	if xdgData := os.Getenv("XDG_DATA_HOME"); xdgData != "" {
 		return filepath.Join(xdgData, "chisel"), nil

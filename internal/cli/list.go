@@ -35,6 +35,14 @@ func (l *ListCommand) Execute(verbose bool) error {
 	packages := reg.ListPackages()
 
 	if len(packages) == 0 {
+		if verbose {
+			// Display configuration header even when no packages
+			fmt.Println("Configuration:")
+			fmt.Printf("  Base Directory: %s\n", l.config.BaseDir)
+			fmt.Printf("  Registry Path:  %s\n", l.config.RegistryPath)
+			fmt.Printf("  Store Root:     %s\n", l.config.StoreRoot)
+			fmt.Println()
+		}
 		fmt.Println("No packages installed.")
 		return nil
 	}
@@ -102,6 +110,13 @@ func (l *ListCommand) displayCompact(packages []*registry.Package) {
 
 // displayVerbose shows detailed information for each package
 func (l *ListCommand) displayVerbose(packages []*registry.Package) {
+	// Display configuration header
+	fmt.Println("Configuration:")
+	fmt.Printf("  Base Directory: %s\n", l.config.BaseDir)
+	fmt.Printf("  Registry Path:  %s\n", l.config.RegistryPath)
+	fmt.Printf("  Store Root:     %s\n", l.config.StoreRoot)
+	fmt.Println()
+
 	fmt.Printf("Installed packages (%d total):\n\n", len(packages))
 
 	for i, pkg := range packages {
