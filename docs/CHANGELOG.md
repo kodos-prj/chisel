@@ -5,6 +5,22 @@ All notable changes to Chisel will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Deferred Install Script Execution**: New `chisel install-scripts` command for executing post-install/post-upgrade scripts
+  - Dual-mode execution: non-chroot (direct) and chroot (containerized)
+  - Automatic script detection during package extraction
+  - Registry-based operation tracking (`post_install` vs `post_upgrade`)
+  - Auto-execution during non-chroot installs, deferred execution for chroot installs
+  - `HasInstallScript` field added to Package struct in registry
+  - New `install-scripts` command with comprehensive help and examples
+  - Complete user documentation with troubleshooting guide
+
+### Changed
+- Package registry now tracks which packages have install scripts via `HasInstallScript` field
+- Install command workflow enhanced to detect and execute scripts after symlink creation
+
 ## [0.3.0] - 2026-04-06
 
 ### Added

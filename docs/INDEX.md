@@ -4,8 +4,10 @@ Welcome to Chisel documentation! This index helps you find what you're looking f
 
 ## For End Users
 
+- **[FEATURES.md](FEATURES.md)** - Overview of Chisel's capabilities and features
 - **[USE-CASES.md](USE-CASES.md)** - Comprehensive guide to Chisel's three main use cases with real-world scenarios
 - **[USER-GUIDE.md](user-guides/USER-GUIDE.md)** - Complete user guide for system and user-level package management
+- **[INSTALL-SCRIPTS.md](user-guides/INSTALL-SCRIPTS.md)** - Guide to post-install and post-upgrade scripts
 - **[CONFIGURATION.md](reference/CONFIGURATION.md)** - Configuration file format and options
 - **[Quick Start](../README.md#quick-start)** - Get started quickly (in README)
 
@@ -28,6 +30,7 @@ Welcome to Chisel documentation! This index helps you find what you're looking f
 
 ## Other Resources
 
+- **[IMPLEMENTATION-SUMMARY.md](IMPLEMENTATION-SUMMARY.md)** - Technical implementation details of install-scripts feature
 - **[CHANGELOG.md](CHANGELOG.md)** - Version history
 
 ---
@@ -47,7 +50,9 @@ docs/
 │   ├── REGISTRY.md            # Registry reference
 │   └── CONFIGURATION.md       # Configuration reference
 ├── user-guides/
-│   └── USER-GUIDE.md          # User guide
+│   ├── USER-GUIDE.md          # User guide
+│   └── INSTALL-SCRIPTS.md     # Install scripts guide
+├── FEATURES.md                # Features overview
 ├── USE-CASES.md               # Use cases guide
 ├── CHANGELOG.md               # Version history
 └── INDEX.md                   # This file
@@ -57,6 +62,7 @@ docs/
 
 ## Finding Help
 
+- **Need to run install scripts?** Check [INSTALL-SCRIPTS.md](user-guides/INSTALL-SCRIPTS.md) for detailed guide
 - **Something not working?** Check [USER-GUIDE.md](user-guides/USER-GUIDE.md) troubleshooting section
 - **Want to contribute?** Read [DEVELOPER-GUIDE.md](developer/DEVELOPER-GUIDE.md)
 - **Need to understand the system?** Start with [ARCHITECTURE.md](architecture/ARCHITECTURE.md)

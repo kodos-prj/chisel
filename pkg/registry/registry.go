@@ -16,15 +16,16 @@ const (
 
 // Package represents an installed package in the registry.
 type Package struct {
-	Name         string   `json:"name"`
-	Version      string   `json:"version"`
-	Source       string   `json:"source"`     // "official" or "aur"
-	Repository   string   `json:"repository"` // e.g., "core", "extra", "aur"
-	Files        []string `json:"files"`
-	Executables  []string `json:"executables"`
-	Dependencies []string `json:"dependencies"`
-	InstallDate  string   `json:"install_date"`
-	UpdateDate   string   `json:"update_date,omitempty"` // When the package was last updated
+	Name              string   `json:"name"`
+	Version           string   `json:"version"`
+	Source            string   `json:"source"`     // "official" or "aur"
+	Repository        string   `json:"repository"` // e.g., "core", "extra", "aur"
+	Files             []string `json:"files"`
+	Executables       []string `json:"executables"`
+	Dependencies      []string `json:"dependencies"`
+	InstallDate       string   `json:"install_date"`
+	UpdateDate        string   `json:"update_date,omitempty"` // When the package was last updated
+	HasInstallScript  bool     `json:"has_install_script,omitempty"`
 }
 
 // Registry manages the package registry.

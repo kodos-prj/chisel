@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -27,6 +28,14 @@ type InstallCommand struct {
 	baseDirExplicit bool // Track if --base-dir was explicitly provided
 	aurRPC          *aur.RPCClient
 	buildMgr        *build.BuildManager
+}
+
+// PackageFiles tracks extracted files and metadata for a package
+type PackageFiles struct {
+	AllExtractedFiles []extract.ExtractedFile
+	AllFiles          []string
+	Executables       []string
+	HasInstallScript  bool
 }
 
 // NewInstallCommand creates a new install command.
@@ -207,11 +216,6 @@ func (i *InstallCommand) Run(args []string) error {
 
 	// Map to track extracted files per package (for registry and symlink creation)
 	// Structure: pkgName -> version -> {allFiles: []string, executables: []string}
-	type PackageFiles struct {
-		AllExtractedFiles []extract.ExtractedFile
-		AllFiles          []string
-		Executables       []string
-	}
 	extractedFilesMap := make(map[string]map[string]PackageFiles) // pkgName -> version -> PackageFiles
 
 	// Separate AUR and official packages
@@ -322,11 +326,17 @@ func (i *InstallCommand) Run(args []string) error {
 
 			var allFiles []string
 			var executables []string
+			hasInstallScript := false
 
 			for _, file := range extractedFileObjs {
 				// Collect all files (except directories)
 				if !file.IsDirectory {
 					allFiles = append(allFiles, file.Path)
+
+					// Track if package has .INSTALL script
+					if file.Path == ".INSTALL" {
+						hasInstallScript = true
+					}
 
 					// Also track executables in /usr/bin and /usr/sbin
 					if strings.HasPrefix(file.Path, "usr/bin/") || strings.HasPrefix(file.Path, "usr/sbin/") {
@@ -339,6 +349,7 @@ func (i *InstallCommand) Run(args []string) error {
 				AllExtractedFiles: extractedFileObjs,
 				AllFiles:          allFiles,
 				Executables:       executables,
+				HasInstallScript:  hasInstallScript,
 			}
 
 			// Set as current version
@@ -468,6 +479,19 @@ func (i *InstallCommand) Run(args []string) error {
 		}
 	}
 
+	// Execute install scripts for non-chroot installations
+	// For chroot, scripts must be executed separately via `chisel install-scripts`
+	if opts.Chroot == "" {
+		fmt.Println("\nExecuting install scripts...")
+		if err := i.executeInstallScriptsLocal(toInstall, extractedFilesMap); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: Some install scripts failed: %v\n", err)
+		}
+	} else {
+		fmt.Printf("\nNote: Install scripts must be executed in chroot context.\n")
+		fmt.Printf("Run the following command to execute install scripts:\n")
+		fmt.Printf("  chisel install-scripts --chroot %s\n\n", opts.Chroot)
+	}
+
 	// Generate wrapper scripts (skip when using --chroot, as symlinks point directly to files)
 	if opts.Chroot == "" {
 		fmt.Println("\nGenerating wrapper scripts...")
@@ -553,15 +577,16 @@ func (i *InstallCommand) Run(args []string) error {
 		}
 
 		regPkg := &registry.Package{
-			Name:         pkg.Name,
-			Version:      pkg.Version,
-			Source:       source,
-			Repository:   pkg.Repo,
-			Files:        files,
-			Executables:  executables,
-			Dependencies: dependencies,
-			InstallDate:  time.Now().Format(time.RFC3339),
-			UpdateDate:   time.Now().Format(time.RFC3339),
+			Name:             pkg.Name,
+			Version:          pkg.Version,
+			Source:           source,
+			Repository:       pkg.Repo,
+			Files:            files,
+			Executables:      executables,
+			Dependencies:     dependencies,
+			InstallDate:      time.Now().Format(time.RFC3339),
+			UpdateDate:       time.Now().Format(time.RFC3339),
+			HasInstallScript: pkgFileInfo.HasInstallScript,
 		}
 
 		if err := reg.AddPackage(regPkg); err != nil {
@@ -609,6 +634,69 @@ func (i *InstallCommand) expandPackageGroups(client *alpm.ALPMClient, names []st
 	}
 
 	return expanded, nil
+}
+
+// executeInstallScriptsLocal executes install scripts for packages in the current context (non-chroot)
+func (i *InstallCommand) executeInstallScriptsLocal(packages []download.PackageInfo, extractedFilesMap map[string]map[string]PackageFiles) error {
+	// Load the current registry to check which packages existed before
+	reg, err := registry.NewRegistry(i.config.RegistryPath)
+	if err != nil {
+		// Registry might not exist yet, that's ok
+		reg = &registry.Registry{}
+	}
+
+	scriptCount := 0
+	for _, pkg := range packages {
+		pkgFileInfo, ok := extractedFilesMap[pkg.Name][pkg.Version]
+		if !ok || !pkgFileInfo.HasInstallScript {
+			continue
+		}
+
+		// Determine operation: post_install (new) or post_upgrade (upgraded)
+		oldPkg, exists := reg.GetPackage(pkg.Name)
+		operation := "post_install"
+		if exists && oldPkg.Version != pkg.Version {
+			operation = "post_upgrade"
+		}
+
+		// Run the install script
+		extractDir := filepath.Join(i.config.StoreRoot, pkg.Name, pkg.Version)
+		if err := i.runInstallScriptLocal(pkg.Name, operation, extractDir); err != nil {
+			fmt.Fprintf(os.Stderr, "  ⚠ %s: Install script failed (%s): %v\n", pkg.Name, operation, err)
+			// Continue with next package even if this one fails
+			continue
+		}
+
+		scriptCount++
+		fmt.Printf("  ✓ %s: %s completed\n", pkg.Name, operation)
+	}
+
+	if scriptCount > 0 {
+		fmt.Printf("✓ Executed %d install script(s)\n", scriptCount)
+	}
+
+	return nil
+}
+
+// runInstallScriptLocal executes an install script in the current context
+func (i *InstallCommand) runInstallScriptLocal(pkgName string, operation string, extractDir string) error {
+	scriptPath := filepath.Join(extractDir, ".INSTALL")
+
+	// Verify script exists
+	if _, err := os.Stat(scriptPath); err != nil {
+		return fmt.Errorf("script not found at %s", scriptPath)
+	}
+
+	// Execute script in the package directory context
+	// cd to extract dir and source .INSTALL, then call the function
+	shellCmd := fmt.Sprintf("cd '%s' && source ./.INSTALL && %s", extractDir, operation)
+	cmd := exec.Command("bash", "-c", shellCmd)
+
+	// Capture output
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	return cmd.Run()
 }
 
 // resolveDependencies resolves package dependencies.

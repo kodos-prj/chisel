@@ -65,6 +65,9 @@ func main() {
 	case "install":
 		handleInstall(args[1:])
 
+	case "install-scripts":
+		handleInstallScripts(args[1:])
+
 	case "remove":
 		handleRemove(args[1:])
 
@@ -116,6 +119,7 @@ func showUsage() {
 	fmt.Println("")
 	fmt.Println("Available Commands (Phase 3):")
 	fmt.Println("  install <pkg>     Install a package (with dependencies, symlinks, wrappers)")
+	fmt.Println("  install-scripts   Execute post_install/post_upgrade scripts (chroot context)")
 	fmt.Println("  remove <pkg>      Remove a package")
 	fmt.Println("  list              List installed packages")
 	fmt.Println("  list --verbose    List packages with detailed information")
@@ -381,6 +385,67 @@ func handleInstall(args []string) {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+func handleInstallScripts(args []string) {
+	// Show help if --help flag is provided
+	for _, arg := range args {
+		if arg == "--help" || arg == "-h" {
+			fmt.Fprintln(os.Stderr, "Usage: chisel install-scripts [options] [package ...]")
+			fmt.Fprintln(os.Stderr, "Execute post_install/post_upgrade scripts for packages")
+			fmt.Fprintln(os.Stderr, "")
+			fmt.Fprintln(os.Stderr, "Options:")
+			fmt.Fprintln(os.Stderr, "  --chroot <dir>  Chroot base directory (optional - if omitted, executes in current context)")
+			fmt.Fprintln(os.Stderr, "  --verbose       Show detailed script execution information")
+			fmt.Fprintln(os.Stderr, "")
+			fmt.Fprintln(os.Stderr, "Examples:")
+			fmt.Fprintln(os.Stderr, "  # Execute scripts directly in current system context")
+			fmt.Fprintln(os.Stderr, "  chisel install-scripts bash")
+			fmt.Fprintln(os.Stderr, "  chisel install-scripts bash glibc")
+			fmt.Fprintln(os.Stderr, "  chisel install-scripts  # Run all packages with scripts")
+			fmt.Fprintln(os.Stderr, "")
+			fmt.Fprintln(os.Stderr, "  # Execute scripts in chroot context")
+			fmt.Fprintln(os.Stderr, "  chisel install-scripts --chroot /tmp/chroot bash")
+			fmt.Fprintln(os.Stderr, "  chisel install-scripts --chroot /tmp/chroot bash glibc")
+			os.Exit(0)
+		}
+	}
+
+	cfg := loadConfig()
+	cmd := cli.NewInstallScriptsCommand(cfg)
+
+	// Parse install-scripts specific flags
+	verbose := false
+	chrootDir := ""
+	var packages []string
+
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch arg {
+		case "--verbose", "-v":
+			verbose = true
+		case "--chroot":
+			// Get next argument as chroot directory
+			if i+1 < len(args) {
+				chrootDir = args[i+1]
+				i++ // Skip next argument
+			}
+		default:
+			// Treat as package name (skip if it looks like a flag)
+			if !startswith(arg, "--") {
+				packages = append(packages, arg)
+			}
+		}
+	}
+
+	if err := cmd.Execute(packages, verbose, chrootDir); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func startswith(s, prefix string) bool {
+	return len(s) >= len(prefix) && s[:len(prefix)] == prefix
 }
 
 func handleRemove(args []string) {
