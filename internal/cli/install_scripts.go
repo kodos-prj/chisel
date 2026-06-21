@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/kodos-prj/chisel/pkg/config"
 	"github.com/kodos-prj/chisel/pkg/registry"
@@ -20,6 +21,21 @@ func NewInstallScriptsCommand(cfg *config.Config) *InstallScriptsCommand {
 	return &InstallScriptsCommand{
 		config: cfg,
 	}
+}
+
+// isCommandNotFoundError checks if an error is due to "command not found" (exit code 127)
+// This is used to detect when a function doesn't exist in the sourced script
+func isCommandNotFoundError(err error) bool {
+	if err == nil {
+		return false
+	}
+	// Check for exit code 127 (command not found in bash)
+	if exiterr, ok := err.(*exec.ExitError); ok {
+		// Exit code 127 means command not found
+		return exiterr.ExitCode() == 127
+	}
+	// Also check if the error message contains "command not found"
+	return strings.Contains(err.Error(), "command not found")
 }
 
 // Execute runs install scripts for specified packages (or all if none specified)
@@ -72,25 +88,43 @@ func (i *InstallScriptsCommand) Execute(packageNames []string, verbose bool, chr
 	failureCount := 0
 
 	for _, pkg := range packagesToRun {
-		// Determine operation: post_install (new) or post_upgrade (upgraded)
-		operation := "post_install"
-		// For now, we'll default to post_install if re-running via install-scripts
-		// The package already exists in registry, but we check if this is the original install or an update
-		// Since we can't track execution status, we default to post_install
-		// The user should understand that multiple runs of the same script should be idempotent
-		if verbose {
-			fmt.Printf("Running %s for %s/%s...\n", operation, pkg.Name, pkg.Version)
+		// Try both post_install and post_upgrade since we can't reliably determine which one the script defines
+		// Try post_install first (most common), then post_upgrade as fallback
+		operations := []string{"post_install", "post_upgrade"}
+		var lastErr error
+		executionSucceeded := false
+
+		for _, operation := range operations {
+			if verbose {
+				fmt.Printf("Attempting %s for %s/%s...\n", operation, pkg.Name, pkg.Version)
+			}
+
+			err := i.runInstallScript(pkg, operation, chrootDir)
+			if err == nil {
+				// Success - function was found and executed
+				successCount++
+				fmt.Printf("  ✓ %s: %s completed\n", pkg.Name, operation)
+				executionSucceeded = true
+				break
+			}
+
+			// Check if error is "command not found" - if so, try the next operation
+			if isCommandNotFoundError(err) {
+				lastErr = err
+				// Continue to next operation
+				continue
+			}
+
+			// Other errors (path issues, etc.) - report and stop trying
+			lastErr = err
+			break
 		}
 
-		if err := i.runInstallScript(pkg, operation, chrootDir); err != nil {
-			fmt.Fprintf(os.Stderr, "  ✗ %s: Install script failed (%s): %v\n", pkg.Name, operation, err)
+		if !executionSucceeded {
+			fmt.Fprintf(os.Stderr, "  ✗ %s: Install script failed: %v\n", pkg.Name, lastErr)
 			failureCount++
 			// Continue with next package
-			continue
 		}
-
-		successCount++
-		fmt.Printf("  ✓ %s: %s completed\n", pkg.Name, operation)
 	}
 
 	fmt.Printf("\n✓ %d install script(s) executed", successCount)
